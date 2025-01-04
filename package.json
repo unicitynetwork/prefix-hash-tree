@@ -4,5 +4,8 @@
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
     "@openzeppelin/test-helpers": "^0.5.16",
     "hardhat": "^2.22.15"
+  },
+  "dependencies": {
+    "crypto-js": "^4.2.0"
   }
 }

@@ -7,6 +7,10 @@ class SMT {
 	this.hash = hash;
 	this.root = buildTree(hash, leafs);
     }
+
+    getPath(requestPath){
+	return searchPath(this.root, requestPath);
+    }
 }
 
 class Node {
@@ -61,6 +65,38 @@ function traverse(hash, node, remainingPath, leafValue){
 	node.right = splitLeg(hash, node.right, remainingPath, leafValue);
 }
 
+function searchPath(node, remainingPath){
+    const direction = getDirection(remainingPath);
+    if(LEFT){
+	const path = searchLeg(node.left, remainingPath);
+	path[0].covalue = node.right.getHash();
+	return path;
+    }else{
+	const path = searchLeg(node.right, remainingPath);
+	path[0].covalue = node.left.getHash();
+	return path;
+    }
+}
+
+function searchLeg(leg, remainingPath){
+    if(!leg){
+	return [{prefix: null}];
+    }
+    const {prefix, pathSuffix, legSuffix} = splitPrefix(remainingPath, leg.prefix);
+    if(prefix === remainingPath)
+	throw new Error("Search eneded in non-leaf");
+    if(prefix === leg.prefix){
+	if(isLeaf(leg.child)){
+	    return [{prefix}, {value: leg.child.getValue()}];
+	}
+	path = searchPath(leg.child, pathSuffix);
+	path.unshift({prefix});
+	return path;
+    }
+    return [{prefix: leg.prefix}, {value: leg.child.getValue()}];
+}
+
+
 function splitPrefix(prefix, sequence) {
     // Find the position where prefix and sequence differ
     let position = 0n;
@@ -111,4 +147,8 @@ function getDirection(path){
 
 function isLeaf(node){
     return (!node.left && !node.right);
+}
+
+module.exports = {
+    SMT
 }
