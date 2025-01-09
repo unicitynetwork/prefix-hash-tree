@@ -1,7 +1,7 @@
 const CryptoJS = require("crypto-js");
 
 /**
- * Hash function that accepts multiple input parameters (WordArray or BigInt).
+ * Hash function that accepts multiple input parameters (String, WordArray or BigInt).
  * Converts BigInt into WordArray, concatenates all inputs, hashes, and returns a WordArray.
  * 
  * @param {...(CryptoJS.lib.WordArray | BigInt)} inputs - Parameters to hash.
@@ -44,4 +44,8 @@ function hash(...inputs) {
   return CryptoJS.SHA256(concatenatedWordArray);
 }
 
-module.exports = { hash };
+function wordArrayToHex(wordArray){
+    return wordArray.toString(CryptoJS.enc.Hex);
+}
+
+module.exports = { hash, wordArrayToHex };

@@ -34,6 +34,7 @@ class Node {
 
 class Leg {
     constructor(hash, prefix, node){
+	this.hash = hash;
 	this.prefix = prefix;
 	this.child = node;
 	this.outdated = true;
@@ -42,7 +43,7 @@ class Leg {
 
     getHash(){
 	if(this.outdated){
-	    this.value = hash(this.prefix, this.child.getValue());
+	    this.value = this.hash(this.prefix, this.child.getValue());
 	    this.outdated = false;
 	}
 	return this.value;
@@ -51,15 +52,16 @@ class Leg {
 
 function buildTree(hash, leafs){
     const root = new Node(hash);
-    for(leaf in leafs){
+    for(const leaf of leafs){
 	traverse(hash, root, leaf.path, leaf.value);
     }
     return root;
 }
 
 function traverse(hash, node, remainingPath, leafValue){
+    console.log("traverse(hash, node, "+remainingPath+", "+leafValue+")");
     const direction = getDirection(remainingPath);
-    if(LEFT)
+    if(direction === LEFT)
 	node.left = splitLeg(hash, node.left, remainingPath, leafValue);
     else
 	node.right = splitLeg(hash, node.right, remainingPath, leafValue);
@@ -67,13 +69,16 @@ function traverse(hash, node, remainingPath, leafValue){
 
 function searchPath(node, remainingPath){
     const direction = getDirection(remainingPath);
-    if(LEFT){
+    console.log("dicrection: "+direction);
+    if(direction === LEFT){
+	console.log("left");
 	const path = searchLeg(node.left, remainingPath);
-	path[0].covalue = node.right.getHash();
+	path[0].covalue = node.right?node.right.getHash():undefined;
 	return path;
     }else{
+	console.log("right");
 	const path = searchLeg(node.right, remainingPath);
-	path[0].covalue = node.left.getHash();
+	path[0].covalue = node.left?node.left.getHash():undefined;
 	return path;
     }
 }
@@ -83,8 +88,6 @@ function searchLeg(leg, remainingPath){
 	return [{prefix: null}];
     }
     const {prefix, pathSuffix, legSuffix} = splitPrefix(remainingPath, leg.prefix);
-    if(prefix === remainingPath)
-	throw new Error("Search eneded in non-leaf");
     if(prefix === leg.prefix){
 	if(isLeaf(leg.child)){
 	    return [{prefix}, {value: leg.child.getValue()}];
@@ -93,6 +96,8 @@ function searchLeg(leg, remainingPath){
 	path.unshift({prefix});
 	return path;
     }
+    if(prefix === remainingPath)
+	throw new Error("Search ended in non-leaf");
     return [{prefix: leg.prefix}, {value: leg.child.getValue()}];
 }
 
@@ -102,25 +107,33 @@ function splitPrefix(prefix, sequence) {
     let position = 0n;
     let mask = 1n;
 
+    console.log("(prefix & mask): "+(prefix & mask));
+    console.log("(sequence & mask): "+(sequence & mask));
+    console.log("mask: "+mask);
     while ((prefix & mask) === (sequence & mask) && mask <= prefix) {
+	console.log("position: "+position);
         position++;
         mask <<= 1n; // Shift mask left by one bit
     }
 
     // Determine the common prefix and the suffix of the prefix
-    const commonPrefix = prefix & ((1n << position) - 1n); // Mask out bits beyond the divergence point
-    const prefixSuffix = prefix & ~((1n << position) - 1n); // Mask out bits before the divergence point
-    const sequenceSuffix = sequence & ~((1n << position) - 1n); // Mask out bits before the divergence point
+    const commonPrefix = (prefix & ((1n << position) - 1n)) | (1n << position); // Mask out bits beyond the divergence point
+//    const prefixSuffix = (prefix & ~((1n << position) - 1n)) ; // Mask out bits before the divergence point
+    const prefixSuffix = prefix >> position ; // Mask out bits before the divergence point
+//    const sequenceSuffix = sequence & ~((1n << position) - 1n); // Mask out bits before the divergence point
+    const sequenceSuffix = sequence >> position; // Mask out bits before the divergence point
 
     return {prefix: commonPrefix, pathSuffix: prefixSuffix, legSuffix: sequenceSuffix};
 }
 
 function splitLeg(hash, leg, remainingPath, leafValue){
     if(!leg){
-	return new Leg(hash, remainingPath, new Node(leafValue));
+	return new Leg(hash, remainingPath, new Node(hash, leafValue));
     }
     leg.outdated = true;
+	console.log("remainingPath: "+remainingPath+", leg.prefix: "+leg.prefix);
     const {prefix, pathSuffix, legSuffix} = splitPrefix(remainingPath, leg.prefix);
+	console.log("prefix: "+prefix+", pathSuffix: "+pathSuffix+", legSuffix: "+legSuffix);
     if(prefix === remainingPath)
 	throw new Error("Cannot add leaf inside the leg");
     if(prefix === leg.prefix){
@@ -142,7 +155,9 @@ function splitLeg(hash, leg, remainingPath, leafValue){
 }
 
 function getDirection(path){
-    return (path & 0b10n) === 0b10n ? RIGHT : LEFT;
+    const masked = path & 0b1n;
+    console.log("masked: "+masked);
+    return masked === 0b1n ? RIGHT : LEFT;
 }
 
 function isLeaf(node){
