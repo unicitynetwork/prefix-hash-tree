@@ -7,9 +7,9 @@ describe("SMT routines", function() {
     const leafs = [
 	{path: 0b100000000n, value: wordArrayToHex(hash('value00000000'))}, 
 	{path: 0b100010000n, value: wordArrayToHex(hash('value100010000'))}, 
-//	{path: 0b1100n, value: hash('value100')}, 
-//	{path: 0b10001010n, value: hash('value0001010')}, 
-//	{path: 0b11010101n, value: hash('value1010101')}
+	{path: 0b1100n, value: hash('value100')}, 
+	{path: 0b10001010n, value: hash('value0001010')}, 
+	{path: 0b11010101n, value: hash('value1010101')}
     ];
 
     let smt;
