@@ -1,3 +1,6 @@
+'use strict';
+
+const { wordArrayToHex } = require("./helper.js");
 
 const LEFT = 0n;
 const RIGHT = 1n;
@@ -9,7 +12,9 @@ class SMT {
     }
 
     getPath(requestPath){
-	return searchPath(this.root, requestPath);
+	const path = searchPath(this.root, requestPath);
+	path.unshift({value: this.root.getValue()});
+	return path;
     }
 }
 
@@ -19,6 +24,8 @@ class Node {
 	this.right = null
 	this.value = leafValue;
 	this.hash = hash;
+	if(typeof hash !== "function")
+	    throw new Error("hash must be function");
     }
 
     getValue(){
@@ -27,7 +34,7 @@ class Node {
 		throw new Error("Malformed node: this is leaf and non-leaf in the same time");
 	    return this.value;
 	}else
-	    return this.hash(this.left.getHash(), this.right.getHash());
+	    return this.hash(this.left?this.left.getHash():null, this.right?this.right.getHash():null);
     }
 
 }
@@ -59,7 +66,6 @@ function buildTree(hash, leafs){
 }
 
 function traverse(hash, node, remainingPath, leafValue){
-    console.log("traverse(hash, node, "+remainingPath+", "+leafValue+")");
     const direction = getDirection(remainingPath);
     if(direction === LEFT)
 	node.left = splitLeg(hash, node.left, remainingPath, leafValue);
@@ -69,14 +75,11 @@ function traverse(hash, node, remainingPath, leafValue){
 
 function searchPath(node, remainingPath){
     const direction = getDirection(remainingPath);
-    console.log("dicrection: "+direction);
     if(direction === LEFT){
-	console.log("left");
 	const path = searchLeg(node.left, remainingPath);
 	path[0].covalue = node.right?node.right.getHash():undefined;
 	return path;
     }else{
-	console.log("right");
 	const path = searchLeg(node.right, remainingPath);
 	path[0].covalue = node.left?node.left.getHash():undefined;
 	return path;
@@ -88,11 +91,12 @@ function searchLeg(leg, remainingPath){
 	return [{prefix: null}];
     }
     const {prefix, pathSuffix, legSuffix} = splitPrefix(remainingPath, leg.prefix);
+//    console.log("prefix: "+prefix.toString(2)+", remainingPath: "+remainingPath.toString(2)+", leg.prefix: "+leg.prefix.toString(2));
     if(prefix === leg.prefix){
 	if(isLeaf(leg.child)){
 	    return [{prefix}, {value: leg.child.getValue()}];
 	}
-	path = searchPath(leg.child, pathSuffix);
+	const path = searchPath(leg.child, pathSuffix);
 	path.unshift({prefix});
 	return path;
     }
@@ -101,17 +105,12 @@ function searchLeg(leg, remainingPath){
     return [{prefix: leg.prefix}, {value: leg.child.getValue()}];
 }
 
-
 function splitPrefix(prefix, sequence) {
     // Find the position where prefix and sequence differ
     let position = 0n;
     let mask = 1n;
 
-    console.log("(prefix & mask): "+(prefix & mask));
-    console.log("(sequence & mask): "+(sequence & mask));
-    console.log("mask: "+mask);
-    while ((prefix & mask) === (sequence & mask) && mask <= prefix) {
-	console.log("position: "+position);
+    while ((prefix & mask) === (sequence & mask) && mask < prefix && mask < sequence) {
         position++;
         mask <<= 1n; // Shift mask left by one bit
     }
@@ -131,9 +130,7 @@ function splitLeg(hash, leg, remainingPath, leafValue){
 	return new Leg(hash, remainingPath, new Node(hash, leafValue));
     }
     leg.outdated = true;
-	console.log("remainingPath: "+remainingPath+", leg.prefix: "+leg.prefix);
     const {prefix, pathSuffix, legSuffix} = splitPrefix(remainingPath, leg.prefix);
-	console.log("prefix: "+prefix+", pathSuffix: "+pathSuffix+", legSuffix: "+legSuffix);
     if(prefix === remainingPath)
 	throw new Error("Cannot add leaf inside the leg");
     if(prefix === leg.prefix){
@@ -143,7 +140,7 @@ function splitLeg(hash, leg, remainingPath, leafValue){
 	return leg;
     }
     leg.prefix = prefix;
-    const junction = new Node();
+    const junction = new Node(hash);
     const oldLeg = new Leg(hash, legSuffix, leg.child);
     leg.child = junction;
     if(getDirection(legSuffix) === LEFT)
@@ -156,7 +153,6 @@ function splitLeg(hash, leg, remainingPath, leafValue){
 
 function getDirection(path){
     const masked = path & 0b1n;
-    console.log("masked: "+masked);
     return masked === 0b1n ? RIGHT : LEFT;
 }
 
@@ -164,6 +160,18 @@ function isLeaf(node){
     return (!node.left && !node.right);
 }
 
+function verifyPath(hash, path){
+//    let h = hash(path[path.length-1].value);
+    let h = path[path.length-1].value;
+    for(let i=path.length-3; i>=0; i--){
+	h = (getDirection(path[i+1].prefix) === LEFT)?
+	    hash(hash(path[i+1].prefix, h), path[i+1].covalue?path[i+1].covalue:null):
+	    hash(path[i+1].covalue?path[i+1].covalue:null, hash(path[i+1].prefix, h));
+    }
+    return wordArrayToHex(h) === wordArrayToHex(path[0].value);
+}
+
 module.exports = {
-    SMT
+    SMT,
+    verifyPath
 }

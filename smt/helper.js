@@ -1,3 +1,5 @@
+'use strict';
+
 const CryptoJS = require("crypto-js");
 
 /**
@@ -33,6 +35,9 @@ function hash(...inputs) {
     } else if (typeof input === "string") {
       // Convert string to WordArray
       input = stringToWordArray(input);
+    } else if (input === null) {
+      // Null value as bigint 0
+      input = bigIntToWordArray(0n);
     } else if (!CryptoJS.lib.WordArray.isPrototypeOf(input)) {
       throw new Error("Invalid input: must be a BigInt or CryptoJS.lib.WordArray.");
     }

@@ -1,5 +1,7 @@
+"use strict";
 
-const { SMT } = require("../smt/smt.js");
+const { assert } = require("chai");
+const { SMT, verifyPath } = require("../smt/smt.js");
 const { hash, wordArrayToHex } = require("../smt/helper.js");
 
 describe("SMT routines", function() {
@@ -21,11 +23,21 @@ describe("SMT routines", function() {
     context("extracting proofs", function() {
 
 	it("extracting all inclusion proofs", function() {
-	    const path = smt.getPath(0b100000000n);
-	    console.log(JSON.stringify(path, 
-		(key, value) =>
-		  typeof value === 'bigint' ? value.toString() : value,
-		4));
+	    for(const leaf of leafs){
+		console.log(leaf.path.toString(2));
+		const path = smt.getPath(leaf.path);
+/*		console.log();
+		console.log("===================================================================");
+		console.log();
+		console.log(JSON.stringify(path, 
+		    (key, value) =>
+			typeof value === 'bigint' ? value.toString() : value,
+		    4));
+		console.log();
+		console.log("===================================================================");
+		console.log();*/
+		assert.equal(verifyPath(hash, path), true, "Leaf "+leaf.path.toString(2)+" inclusion verification failed");
+	    }
 	});
 
     });
