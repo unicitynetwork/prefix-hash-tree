@@ -100,8 +100,8 @@ function searchLeg(leg, remainingPath){
 	path.unshift({prefix});
 	return path;
     }
-    if(prefix === remainingPath)
-	throw new Error("Search ended in non-leaf");
+/*    if(prefix === remainingPath)
+	throw new Error("Search ended in non-leaf");*/
     return [{prefix: leg.prefix}, {value: leg.child.getValue()}];
 }
 
