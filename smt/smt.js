@@ -109,8 +109,15 @@ function splitPrefix(prefix, sequence) {
     // Find the position where prefix and sequence differ
     let position = 0n;
     let mask = 1n;
+    const prefixLen = prefix.toString(2).length-1;
+    const sequenceLen = sequence.toString(2).length-1;
+    const capLen = prefixLen < sequenceLen ? prefixLen : sequenceLen;
 
-    while ((prefix & mask) === (sequence & mask) && mask < prefix && mask < sequence) {
+//    console.log("prefix: "+prefix.toString(2)+", sequence: "+sequence.toString(2) + ", capLen: "+capLen);
+
+    while ((prefix & mask) === (sequence & mask) && position < capLen) {
+//	console.log("mask: "+mask.toString(2));
+//	console.log("position: "+position);
         position++;
         mask <<= 1n; // Shift mask left by one bit
     }
@@ -171,7 +178,27 @@ function verifyPath(hash, path){
     return wordArrayToHex(h) === wordArrayToHex(path[0].value);
 }
 
+function includesPath(hash, requestPath, path){
+    if(!verifyPath(hash, path))
+	throw new Error("Path integrity check fail");
+    return requestPath === extractLocation(path);
+}
+
+function extractLocation(path){
+    let result = 1n;
+    for(let i=path.length-1; i>0; i--){
+	if(!path[i].prefix)continue;
+//	console.log("p: "+path[i].prefix.toString(2));
+	const bits = path[i].prefix;
+	const bitLength = bits.toString(2).length - 1;
+        result = (result << BigInt(bitLength)) | (bits & ((1n << BigInt(bitLength)) - 1n));
+    }
+//    console.log("result: "+result.toString(2));
+    return result;
+}
+
 module.exports = {
     SMT,
-    verifyPath
+    verifyPath,
+    includesPath
 }
