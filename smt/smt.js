@@ -16,6 +16,10 @@ class SMT {
 	path.unshift({value: this.root.getValue()});
 	return path;
     }
+
+    addLeaf(requestPath, value){
+	traverse(this.hash, this.root, requestPath, value);
+    }
 }
 
 class Node {
@@ -197,8 +201,16 @@ function extractLocation(path){
     return result;
 }
 
+function extractValue(path){
+    const leaf = path[path.length-1];
+    if(leaf.covalue || leaf.prefix)
+	throw new Error("Path has no leaf");
+    return leaf.value;
+}
+
 module.exports = {
     SMT,
     verifyPath,
-    includesPath
+    includesPath,
+    extractValue
 }
