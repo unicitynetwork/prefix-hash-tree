@@ -54,7 +54,7 @@ describe("SMT routines", function() {
 		});
 
 		it("extracting non-inclusion proofs for paths exceeding existing branches", function() {
-		    checkPaths(smt, leafs, (p) => {return p | 1024n;}, false, (p) => {return "Leaf at location "+p.toString(2)+" included";});
+		    checkPaths(smt, leafs, (p) => {return p | (1n << 512n);}, false, (p) => {return "Leaf at location "+p.toString(2)+" included";});
 		});
 
 		it("extracting non-inclusion proofs for paths stopping inside existing branches", function() {

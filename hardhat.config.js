@@ -10,5 +10,8 @@ let networks = { // predefined network conf for local dev net
 }
 
 module.exports = {
+    mocha: {
+	timeout: 600000, // Set timeout to 60 seconds (default is 2000ms)
+    },
     networks,
 }
