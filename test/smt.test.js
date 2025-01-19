@@ -13,14 +13,23 @@ function checkPaths(smt, leafs, pathTransformFunc, shouldBeIncluded, failMsg){
 	}
 }
 
-function checkValues(smt, leafs){
+function checkValues(smt, leafs, pathTransformFunc){
 	for(const leaf of leafs){
-		const requestedPath = leaf.path;
+		const requestedPath = pathTransformFunc(leaf.path);
 		console.log(requestedPath.toString(2));
 		const path = smt.getPath(requestedPath);
-//		assert.equal(extractValue(hash, requestedPath, path), shouldBeIncluded, failMsg(requestedPath));
 		console.log();
 		assert.equal(extractValue(path), wordArrayToHex(hash('value'+requestedPath.toString(2).substring(1))), "Value of "+requestedPath.toString(2)+" has been changed");
+	}
+}
+
+function modifyValues(smt, leafs, pathTransformFunc){
+	for(const leaf of leafs){
+		const requestedPath = pathTransformFunc(leaf.path);
+		console.log(requestedPath.toString(2));
+		try{
+		    smt.addLeaf(requestedPath, wordArrayToHex(hash('different value')));
+		}catch(e){}
 	}
 }
 
@@ -60,7 +69,7 @@ describe("SMT routines", function() {
 
 		it("extracting all inclusion proofs", function() {
 		    checkPaths(smt, leafs, (p) => {return p;}, true, (p) => {return "Leaf at location "+p.toString(2)+" not included";});
-		    checkValues(smt, leafs);
+		    checkValues(smt, leafs, (p) => {return p;});
 		});
 
 		if(i==0)it("extracting non-inclusion proofs for paths deviating from the existing branches", function() {
@@ -77,23 +86,45 @@ describe("SMT routines", function() {
 
 	    });
 
-	    if(i==0)context("Setting different value at existing leaf", function() {
+	    if(i==0)context("Trying to perform illegal leaf/value modifications", function() {
 
-		beforeEach(function(){
-		    for(const leaf of leafs){
-			try{
-			    smt.addLeaf(leaf.path, wordArrayToHex(hash('different value')));
-			}catch(e){}
-		    }
+		context("Setting different value at existing leaf", function() {
+
+		    beforeEach(function(){
+			modifyValues(smt, leafs, (p) => {return p;});
+		    });
+
+		    it("leafs values not changed", function() {
+			checkValues(smt, leafs, (p) => {return p;});
+		    });
+
 		});
 
-		it("leafs values not changed", function() {
-		    checkValues(smt, leafs);
-//		    const path = smt.getPath(leafs[0].path);
-/*		    console.log(JSON.stringify(path, (key, value) =>
-		      typeof value === 'bigint' ? value.toString() : value, 4
-		    ));*/
-//		    assert.equal(extractValue(path), wordArrayToHex(hash('value00000000')), "Value of has been changed");
+		context("Adding leaf including in its path already existing leaf", function() {
+
+		    beforeEach(function(){
+			modifyValues(smt, leafs, (p) => {return p | (1n << 512n);});
+		    });
+
+		    it("leafs values not changed", function() {
+			checkPaths(smt, leafs, (p) => {return p | (1n << 512n);}, false, (p) => {return "Leaf at location "+p.toString(2)+" included";});
+			checkValues(smt, leafs, (p) => {return p;});
+		    });
+
+		});
+
+
+		context("Adding leaf inside a path of an already existing leaf", function() {
+
+		    beforeEach(function(){
+			modifyValues(smt, leafs, (p) => {const pl = BigInt(p.toString(2).length)/2n; const mask = (1n << pl)-1n; return (p & mask) | (1n << pl);});
+		    });
+
+		    it("leafs values not changed", function() {
+			checkPaths(smt, leafs, (p) => {const pl = BigInt(p.toString(2).length)/2n; const mask = (1n << pl)-1n; return (p & mask) | (1n << pl);}, false, (p) => {return "Leaf at location "+p.toString(2)+" included";});
+			checkValues(smt, leafs, (p) => {return p;});
+		    });
+
 		});
 
 	    });
