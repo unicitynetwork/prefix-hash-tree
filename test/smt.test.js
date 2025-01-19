@@ -4,8 +4,16 @@ const { assert } = require("chai");
 const { SMT, verifyPath, includesPath } = require("../smt/smt.js");
 const { hash, wordArrayToHex } = require("../smt/helper.js");
 
-function checkPaths(leafs, pathTransformFunc, shouldBeIncluded){
-
+function checkPaths(smt, leafs, pathTransformFunc, shouldBeIncluded, failMsg){
+	for(const leaf of leafs){
+/*		const pl = BigInt(leaf.path.toString(2).length)/2n;
+		const mask = (1n << pl)-1n;
+		const requestedPath = (leaf.path & mask) | (1n << pl);*/
+		const requestedPath = pathTransformFunc(leaf.path);
+		console.log(requestedPath.toString(2));
+		const path = smt.getPath(requestedPath);
+		assert.equal(includesPath(hash, requestedPath, path), shouldBeIncluded, failMsg(requestedPath));
+	}
 }
 
 describe("SMT routines", function() {
@@ -30,40 +38,44 @@ describe("SMT routines", function() {
     context("extracting proofs", function() {
 
 	it("extracting all inclusion proofs", function() {
-	    for(const leaf of leafs){
+/*	    for(const leaf of leafs){
 		console.log(leaf.path.toString(2));
 		const path = smt.getPath(leaf.path);
 		assert.equal(includesPath(hash, leaf.path, path), true, "Leaf at location "+leaf.path.toString(2)+" not included");
-	    }
+	    }*/
+	    checkPaths(smt, leafs, (p) => {return p;}, true, (p) => {return "Leaf at location "+p.toString(2)+" not included";});
 	});
 
 	it("extracting non-inclusion proofs for paths deviating from the existing branches", function() {
-	    for(const leaf of leafs){
+/*	    for(const leaf of leafs){
 		const requestedPath = leaf.path ^ 4n;
 		console.log(requestedPath.toString(2));
 		const path = smt.getPath(requestedPath);
 		assert.equal(includesPath(hash, requestedPath, path), false, "Leaf at location "+requestedPath.toString(2)+" not included");
-	    }
+	    }*/
+	    checkPaths(smt, leafs, (p) => {return p ^ 4n;}, false, (p) => {return "Leaf at location "+p.toString(2)+" included";});
 	});
 
 	it("extracting non-inclusion proofs for paths exceeding existing branches", function() {
-	    for(const leaf of leafs){
+/*	    for(const leaf of leafs){
 		const requestedPath = leaf.path | 1024n;
 		console.log(requestedPath.toString(2));
 		const path = smt.getPath(requestedPath);
 		assert.equal(includesPath(hash, requestedPath, path), false, "Leaf at location "+requestedPath.toString(2)+" not included");
-	    }
+	    }*/
+	    checkPaths(smt, leafs, (p) => {return p | 1024n;}, false, (p) => {return "Leaf at location "+p.toString(2)+" included";});
 	});
 
 	it("extracting non-inclusion proofs for paths stopping inside existing branches", function() {
-	    for(const leaf of leafs){
+/*	    for(const leaf of leafs){
 		const pl = BigInt(leaf.path.toString(2).length)/2n;
 		const mask = (1n << pl)-1n;
 		const requestedPath = (leaf.path & mask) | (1n << pl);
 		console.log(requestedPath.toString(2));
 		const path = smt.getPath(requestedPath);
-		assert.equal(includesPath(hash, requestedPath, path), false, "Leaf at location "+requestedPath.toString(2)+" not included");
-	    }
+		assert.equal(includesPath(hash, requestedPath, path), false, "Leaf at location "+requestedPath.toString(2)+" included");
+	    }*/
+	    checkPaths(smt, leafs, (p) => {const pl = BigInt(p.toString(2).length)/2n; const mask = (1n << pl)-1n; return (p & mask) | (1n << pl);}, false, (p) => {return "Leaf at location "+p.toString(2)+" included";});
 	});
 
 
