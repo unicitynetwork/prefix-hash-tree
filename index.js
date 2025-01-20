@@ -1,1 +1,1 @@
-module.exports = require("./smt/smt.js");
+module.exports = Object.assign({}, require("./smt/smt.js"), require("./smt/helper.js"));

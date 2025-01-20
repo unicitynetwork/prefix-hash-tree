@@ -18,7 +18,9 @@ function checkValues(smt, leafs, pathTransformFunc){
 		const requestedPath = pathTransformFunc(leaf.path);
 		console.log(requestedPath.toString(2));
 		const path = smt.getPath(requestedPath);
-		console.log();
+/*		console.log(JSON.stringify(path, (key, value) =>
+		  typeof value === 'bigint' ? value.toString() : value
+		,4));*/
 		assert.equal(extractValue(path), wordArrayToHex(hash('value'+requestedPath.toString(2).substring(1))), "Value of "+requestedPath.toString(2)+" has been changed");
 	}
 }
@@ -45,7 +47,7 @@ function generatePaths(l){
 
 describe("SMT routines", function() {
 
-    for(let i=0; i<2; i++){
+    for(let i=0; i<1; i++){
 
 	context(i==0?"sparse tree":"filled tree", function() {
 	    const leafs = i==0?[

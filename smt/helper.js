@@ -50,7 +50,11 @@ function hash(...inputs) {
 }
 
 function wordArrayToHex(wordArray){
-    return wordArray.toString(CryptoJS.enc.Hex);
+    return wordArray?.toString(CryptoJS.enc.Hex);
 }
 
-module.exports = { hash, wordArrayToHex };
+function isWordArray(obj) {
+    return CryptoJS.lib.WordArray.isPrototypeOf(obj);
+}
+
+module.exports = { hash, wordArrayToHex, isWordArray };
