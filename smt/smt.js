@@ -212,5 +212,6 @@ module.exports = {
     SMT,
     verifyPath,
     includesPath,
+    extractLocation,
     extractValue
 }
