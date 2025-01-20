@@ -4,7 +4,7 @@
   "description": "Core authenticated aggregator data structure based on prefix and hash trees",
   "repository": {
     "type": "git",
-    "url": "https://github.com/unicitynetwork/prefix-hash-tree.git"
+    "url": "git+https://github.com/unicitynetwork/prefix-hash-tree.git"
   },
   "author": "cryptohog",
   "license": "ISC",
