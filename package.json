@@ -1,5 +1,13 @@
 {
-  "name": "solidity_aggregator_smt",
+  "name": "@unicitylabs/prefix-hash-tree",
+  "version": "1.0.0",
+  "description": "Core authenticated aggregator data structure based on prefix and hash trees",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/unicitynetwork/prefix-hash-tree.git"
+  },
+  "author": "cryptohog",
+  "license": "ISC",
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
     "@openzeppelin/test-helpers": "^0.5.16",
@@ -7,5 +15,8 @@
   },
   "dependencies": {
     "crypto-js": "^4.2.0"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
