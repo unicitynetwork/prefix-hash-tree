@@ -2,7 +2,8 @@
 
 const { assert } = require("chai");
 const { SMT, verifyPath, includesPath, extractValue } = require("../smt/smt.js");
-const { hash, wordArrayToHex } = require("../smt/helper.js");
+const { hash } = require("../smt/helper.js");
+const { wordArrayToHex } = require("@unicitylabs/shared");
 
 function checkPaths(smt, leafs, pathTransformFunc, shouldBeIncluded, failMsg){
 	for(const leaf of leafs){

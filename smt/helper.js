@@ -2,6 +2,8 @@
 
 const CryptoJS = require("crypto-js");
 
+const { bigIntToWordArray, stringToWordArray } = require("@unicitylabs/shared");
+
 /**
  * Hash function that accepts multiple input parameters (String, WordArray or BigInt).
  * Converts BigInt into WordArray, concatenates all inputs, hashes, and returns a WordArray.
@@ -10,22 +12,6 @@ const CryptoJS = require("crypto-js");
  * @returns {CryptoJS.lib.WordArray} - The resulting SHA256 hash as a WordArray.
  */
 function hash(...inputs) {
-  // Helper function to convert BigInt to WordArray
-  const bigIntToWordArray = (bigInt) => {
-    // Convert BigInt to Hex String
-    let hexString = bigInt.toString(16);
-    // Ensure even length for Hex String
-    if (hexString.length % 2 !== 0) {
-      hexString = "0" + hexString;
-    }
-    // Convert Hex String to WordArray
-    return CryptoJS.enc.Hex.parse(hexString);
-  };
-
-  // Helper function to convert a string to WordArray
-  const stringToWordArray = (string) => {
-    return CryptoJS.enc.Utf8.parse(string);
-  }
 
   // Concatenate all inputs into a single WordArray
   const concatenatedWordArray = inputs.reduce((acc, input) => {
@@ -49,12 +35,4 @@ function hash(...inputs) {
   return CryptoJS.SHA256(concatenatedWordArray);
 }
 
-function wordArrayToHex(wordArray){
-    return wordArray?.toString(CryptoJS.enc.Hex);
-}
-
-function isWordArray(obj) {
-    return CryptoJS.lib.WordArray.isPrototypeOf(obj);
-}
-
-module.exports = { hash, wordArrayToHex, isWordArray };
+module.exports = { hash };

@@ -1,6 +1,6 @@
 'use strict';
 
-const { wordArrayToHex } = require("./helper.js");
+const { wordArrayToHex } = require("@unicitylabs/shared");
 
 const LEFT = 0n;
 const RIGHT = 1n;
@@ -185,20 +185,52 @@ function verifyPath(hash, path){
 function includesPath(hash, requestPath, path){
     if(!verifyPath(hash, path))
 	throw new Error("Path integrity check fail");
-    return requestPath === extractLocation(path);
+    const extractedLocation = extractLocation(path);
+    if(requestPath === extractedLocation)return true;
+    const requestPathBits = requestPath.toString(2).substring(1);
+    const extractedLocationBits = extractedLocation.toString(2).substring(1);
+    const commonPathBits = getCommonPathBits(requestPathBits, extractedLocationBits);
+    if(commonPathBits === requestPathBits)return false;
+    if(commonPathBits === extractedLocationBits)
+	if(path[path.length-1].leaf)
+	    return false;
+	else
+	    throw new Error("Wrong path aquired for the requested path");
+    if(vertexAtDepth(path, commonPathBits.length))
+	    throw new Error("Wrong path aquired for the requested path");
+    return false;
+}
+
+function getCommonPathBits(pathBits1, pathBits2){
+    let i1=pathBits1.length-1;
+    let i2=pathBits2.length-1;
+    while((i1>=0)&&(i2>=0)&&(pathBits1.substring(i1,1)===pathBits2.substring(i2,1))){
+	i1--;
+	i2--;
+    }
+    return pathBits1.substring(i1+1);
 }
 
 function extractLocation(path){
     let result = 1n;
     for(let i=path.length-1; i>0; i--){
 	if(!path[i].prefix)continue;
-//	console.log("p: "+path[i].prefix.toString(2));
 	const bits = path[i].prefix;
 	const bitLength = bits.toString(2).length - 1;
         result = (result << BigInt(bitLength)) | (bits & ((1n << BigInt(bitLength)) - 1n));
     }
-//    console.log("result: "+result.toString(2));
     return result;
+}
+
+function vertexAtDepth(path, depth){
+    let result = 1n;
+    for(let i=path.length-1; i>0 && (1n << BigInt(depth))>result; i--){
+	if(!path[i].prefix)continue;
+	const bits = path[i].prefix;
+	const bitLength = bits.toString(2).length - 1;
+        result = (result << BigInt(bitLength)) | (bits & ((1n << BigInt(bitLength)) - 1n));
+    }
+    return result.toString(2).length == depth;
 }
 
 function extractValue(path){
