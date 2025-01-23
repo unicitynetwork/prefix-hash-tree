@@ -1,6 +1,6 @@
 'use strict';
 
-const { wordArrayToHex } = require("@unicitylabs/shared");
+const { wordArrayToHex } = require("@unicitylabs/utils");
 
 const LEFT = 0n;
 const RIGHT = 1n;
@@ -95,7 +95,6 @@ function searchLeg(leg, remainingPath){
 	return [{prefix: null}];
     }
     const {prefix, pathSuffix, legSuffix} = splitPrefix(remainingPath, leg.prefix);
-//    console.log("prefix: "+prefix.toString(2)+", remainingPath: "+remainingPath.toString(2)+", leg.prefix: "+leg.prefix.toString(2));
     if(prefix === leg.prefix){
 	if(isLeaf(leg.child)){
 	    return [{prefix}, {value: leg.child.getValue()}];
@@ -104,8 +103,6 @@ function searchLeg(leg, remainingPath){
 	path.unshift({prefix});
 	return path;
     }
-/*    if(prefix === remainingPath)
-	throw new Error("Search ended in non-leaf");*/
     return [{prefix: leg.prefix}, {value: leg.child.getValue()}];
 }
 
@@ -117,20 +114,14 @@ function splitPrefix(prefix, sequence) {
     const sequenceLen = sequence.toString(2).length-1;
     const capLen = prefixLen < sequenceLen ? prefixLen : sequenceLen;
 
-//    console.log("prefix: "+prefix.toString(2)+", sequence: "+sequence.toString(2) + ", capLen: "+capLen);
-
     while ((prefix & mask) === (sequence & mask) && position < capLen) {
-//	console.log("mask: "+mask.toString(2));
-//	console.log("position: "+position);
         position++;
         mask <<= 1n; // Shift mask left by one bit
     }
 
     // Determine the common prefix and the suffix of the prefix
     const commonPrefix = (prefix & ((1n << position) - 1n)) | (1n << position); // Mask out bits beyond the divergence point
-//    const prefixSuffix = (prefix & ~((1n << position) - 1n)) ; // Mask out bits before the divergence point
     const prefixSuffix = prefix >> position ; // Mask out bits before the divergence point
-//    const sequenceSuffix = sequence & ~((1n << position) - 1n); // Mask out bits before the divergence point
     const sequenceSuffix = sequence >> position; // Mask out bits before the divergence point
 
     return {prefix: commonPrefix, pathSuffix: prefixSuffix, legSuffix: sequenceSuffix};
@@ -172,7 +163,6 @@ function isLeaf(node){
 }
 
 function verifyPath(hash, path){
-//    let h = hash(path[path.length-1].value);
     let h = path[path.length-1].value;
     for(let i=path.length-3; i>=0; i--){
 	h = (getDirection(path[i+1].prefix) === LEFT)?

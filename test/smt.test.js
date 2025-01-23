@@ -2,15 +2,14 @@
 
 const { assert } = require("chai");
 const { SMT, verifyPath, includesPath, extractValue } = require("../smt/smt.js");
-const { hash } = require("../smt/helper.js");
-const { wordArrayToHex } = require("@unicitylabs/shared");
+const { smthash, wordArrayToHex } = require("@unicitylabs/utils");
 
 function checkPaths(smt, leafs, pathTransformFunc, shouldBeIncluded, failMsg){
 	for(const leaf of leafs){
 		const requestedPath = pathTransformFunc(leaf.path);
 		console.log(requestedPath.toString(2));
 		const path = smt.getPath(requestedPath);
-		assert.equal(includesPath(hash, requestedPath, path), shouldBeIncluded, failMsg(requestedPath));
+		assert.equal(includesPath(smthash, requestedPath, path), shouldBeIncluded, failMsg(requestedPath));
 	}
 }
 
@@ -22,7 +21,7 @@ function checkValues(smt, leafs, pathTransformFunc){
 /*		console.log(JSON.stringify(path, (key, value) =>
 		  typeof value === 'bigint' ? value.toString() : value
 		,4));*/
-		assert.equal(extractValue(path), wordArrayToHex(hash('value'+requestedPath.toString(2).substring(1))), "Value of "+requestedPath.toString(2)+" has been changed");
+		assert.equal(extractValue(path), wordArrayToHex(smthash('value'+requestedPath.toString(2).substring(1))), "Value of "+requestedPath.toString(2)+" has been changed");
 	}
 }
 
@@ -31,7 +30,7 @@ function modifyValues(smt, leafs, pathTransformFunc){
 		const requestedPath = pathTransformFunc(leaf.path);
 		console.log(requestedPath.toString(2));
 		try{
-		    smt.addLeaf(requestedPath, wordArrayToHex(hash('different value')));
+		    smt.addLeaf(requestedPath, wordArrayToHex(smthash('different value')));
 		}catch(e){}
 	}
 }
@@ -41,7 +40,7 @@ function generatePaths(l){
     const trail = (1n << BigInt(l));
     for(let i=0n; i<trail; i++){
 	const path = i | trail;
-	leafs.push({path , value: wordArrayToHex(hash('value'+path.toString(2).substring(1)))});
+	leafs.push({path , value: wordArrayToHex(smthash('value'+path.toString(2).substring(1)))});
     }
     return leafs;
 }
@@ -52,20 +51,20 @@ describe("SMT routines", function() {
 
 	context(i==0?"sparse tree":"filled tree", function() {
 	    const leafs = i==0?[
-		{path: 0b100000000n, value: wordArrayToHex(hash('value00000000'))}, 
-		{path: 0b100010000n, value: wordArrayToHex(hash('value00010000'))}, 
-		{path: 0b111100101n, value: hash('value11100101')}, 
-		{path:      0b1100n, value: hash('value100')}, 
-		{path:      0b1011n, value: hash('value011')},
-		{path: 0b111101111n, value: wordArrayToHex(hash('value11101111'))}, 
-		{path:  0b10001010n, value: hash('value0001010')}, 
-		{path:  0b11010101n, value: hash('value1010101')}
+		{path: 0b100000000n, value: wordArrayToHex(smthash('value00000000'))}, 
+		{path: 0b100010000n, value: wordArrayToHex(smthash('value00010000'))}, 
+		{path: 0b111100101n, value: smthash('value11100101')}, 
+		{path:      0b1100n, value: smthash('value100')}, 
+		{path:      0b1011n, value: smthash('value011')},
+		{path: 0b111101111n, value: wordArrayToHex(smthash('value11101111'))}, 
+		{path:  0b10001010n, value: smthash('value0001010')}, 
+		{path:  0b11010101n, value: smthash('value1010101')}
 	    ]:generatePaths(7);
 
     	    let smt;
 
     	    beforeEach(function(){
-		smt = new SMT(hash, leafs);
+		smt = new SMT(smthash, leafs);
 	    });
 
 	    context("extracting proofs", function() {
