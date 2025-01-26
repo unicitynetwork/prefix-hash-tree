@@ -1,6 +1,6 @@
 {
   "name": "@unicitylabs/prefix-hash-tree",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "description": "Core authenticated aggregator data structure based on prefix and hash trees",
   "repository": {
     "type": "git",
