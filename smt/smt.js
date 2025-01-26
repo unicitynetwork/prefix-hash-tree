@@ -63,6 +63,8 @@ class Leg {
 
 function buildTree(hash, leafs){
     const root = new Node(hash);
+
+    let c=0;
     for(const leaf of leafs){
 	traverse(hash, root, leaf.path, leaf.value);
     }
@@ -232,6 +234,7 @@ function extractValue(path){
 
 module.exports = {
     SMT,
+    searchPath,
     verifyPath,
     includesPath,
     extractLocation,
