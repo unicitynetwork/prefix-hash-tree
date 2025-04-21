@@ -2,6 +2,15 @@
   "name": "@unicitylabs/prefix-hash-tree",
   "version": "1.2.12",
   "description": "Core authenticated aggregator data structure based on prefix and hash trees",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "prepare": "npm run build",
+    "test": "cross-env NODE_NO_WARNINGS=1 mocha --loader=ts-node/esm 'test/**/*.spec.ts'",
+    "lint": "eslint . --ext .ts"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/unicitynetwork/prefix-hash-tree.git"
@@ -9,9 +18,28 @@
   "author": "cryptohog",
   "license": "ISC",
   "devDependencies": {
+    "@eslint/js": "^8.54.0",
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
     "@openzeppelin/test-helpers": "^0.5.16",
-    "hardhat": "^2.22.15"
+    "@types/chai": "^4.3.6",
+    "@types/crypto-js": "^4.2.2",
+    "@types/mocha": "^10.0.6",
+    "@types/node": "^20.10.0",
+    "@types/object-hash": "^3.0.6",
+    "chai": "^4.3.7",
+    "cross-env": "^7.0.3",
+    "eslint": "^8.54.0",
+    "eslint-config-prettier": "^9.0.0",
+    "eslint-plugin-import": "^2.29.0",
+    "eslint-plugin-prettier": "^5.0.1",
+    "globals": "^13.24.0",
+    "hardhat": "^2.22.15",
+    "mocha": "^10.2.0",
+    "object-hash": "^3.0.0",
+    "prettier": "^3.1.0",
+    "ts-node": "^10.9.1",
+    "typescript": "^5.3.2",
+    "typescript-eslint": "8.24.0"
   },
   "dependencies": {
     "@unicitylabs/utils": "^1.2.9",

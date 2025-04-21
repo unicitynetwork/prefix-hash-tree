@@ -1,0 +1,26 @@
+# TODO: Consider replacing .npmignore with a package.json "files" property for a whitelisting approach
+# instead of the blacklisting approach used here. This would avoid potential duplication issues with
+# .gitignore and make it more explicit what gets published to npm.
+
+# Source code
+src/
+test/
+
+# Development files
+.gitignore
+.eslintrc
+.eslintignore
+eslint.config.js
+tsconfig.json
+hardhat.config.ts
+hardhat.config.js
+
+# IDE files
+.vscode/
+.idea/
+
+# Misc
+node_modules/
+coverage/
+*.log
+.DS_Store
