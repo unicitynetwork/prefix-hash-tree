@@ -67,146 +67,168 @@ function generatePaths(l: number): Leaf[] {
   return leaves;
 }
 
-describe('SMT routines', function() {
-  for (let i = 0; i < 1; i++) {
-    context(i === 0 ? 'sparse tree' : 'filled tree', function() {
-      const leaves = i === 0 ? [
-        { path: 0b100000000n, value: wordArrayToHex(smthash('value00000000')) },
-        { path: 0b100010000n, value: wordArrayToHex(smthash('value00010000')) },
-        { path: 0b111100101n, value: smthash('value11100101') as WordArray },
-        { path:      0b1100n, value: smthash('value100') as WordArray },
-        { path:      0b1011n, value: smthash('value011') as WordArray },
-        { path: 0b111101111n, value: wordArrayToHex(smthash('value11101111')) },
-        { path:  0b10001010n, value: smthash('value0001010') as WordArray },
-        { path:  0b11010101n, value: smthash('value1010101') as WordArray }
-      ] : generatePaths(7);
+const testConfigs = [
+  {
+    name: 'SMT routines',
+    isSumTree: false,
+    createTree: (leaves: Leaf[]) => new SMT(smthash, leaves),
+  },
+  {
+    name: 'Sum tree routines',
+    isSumTree: true,
+    createTree: (leaves: Leaf[]) => new SMT(
+        smthash, 
+        leaves.map((leaf, index) => ({
+          ...leaf,
+          numericValue: BigInt(index)
+        })), 
+        true),
+  }
+];
 
-      let smt: SMT;
+testConfigs.forEach((config) => {
+  describe(config.name, function() {
+    for (let i = 0; i < 1; i++) {
+      context(i === 0 ? 'sparse tree' : 'filled tree', function() {
+        const leaves = i === 0 ? [
+          { path: 0b100000000n, value: wordArrayToHex(smthash('value00000000')) },
+          { path: 0b100010000n, value: wordArrayToHex(smthash('value00010000')) },
+          { path: 0b111100101n, value: smthash('value11100101') as WordArray },
+          { path:      0b1100n, value: smthash('value100') as WordArray },
+          { path:      0b1011n, value: smthash('value011') as WordArray },
+          { path: 0b111101111n, value: wordArrayToHex(smthash('value11101111')) },
+          { path:  0b10001010n, value: smthash('value0001010') as WordArray },
+          { path:  0b11010101n, value: smthash('value1010101') as WordArray }
+        ] : generatePaths(7);
 
-      beforeEach(function() {
-        smt = new SMT(smthash, leaves);
-      });
+        let smt: SMT;
 
-      context('general checks', function() {
-        it('specific hashes', function() {
-          assert.equal(
-            smt.getRootHash().toString(), 
-            '220f4310e01a338279c83efc9b54cdc55cc6c6a3e49bda43de6173baaeb1aa6b');
-          // TODO: Hashes for paths?
+        beforeEach(function() {
+          smt = config.createTree(leaves);
         });
-      });
 
-      context('extracting proofs', function() {
-        it('extracting all inclusion proofs', function() { // TODO: Fix this test.
-          checkPaths(
-            smt, 
-            leaves, 
-            (p) => p, 
-            true, 
-            (p) => `Leaf at location ${p.toString(2)} not included`
-          );
-          checkValues(smt, leaves, (p) => p);
+        context('general checks', function() {
+          it('specific hashes', function() {
+            assert.equal(
+              smt.getRootHash().toString(), 
+              config.isSumTree ? 
+                  '601693d1c3d79505bee3b68490dcf378a32ff5c53a30f55ee23b11e562fe536a':
+                  '220f4310e01a338279c83efc9b54cdc55cc6c6a3e49bda43de6173baaeb1aa6b');
+          });
         });
 
-        if (i === 0) {
-          it('extracting non-inclusion proofs for paths deviating from the existing branches', function() {
+        context('extracting proofs', function() {
+          it('extracting all inclusion proofs', function() { // TODO: Fix this test.
             checkPaths(
               smt, 
               leaves, 
-              (p) => p ^ 4n, 
+              (p) => p, 
+              true, 
+              (p) => `Leaf at location ${p.toString(2)} not included`
+            );
+            checkValues(smt, leaves, (p) => p);
+          });
+
+          if (i === 0) {
+            it('extracting non-inclusion proofs for paths deviating from the existing branches', function() {
+              checkPaths(
+                smt, 
+                leaves, 
+                (p) => p ^ 4n, 
+                false, 
+                (p) => `Leaf at location ${p.toString(2)} included`
+              );
+            });
+          }
+
+          it('extracting non-inclusion proofs for paths exceeding existing branches', function() {
+            checkPaths(
+              smt, 
+              leaves, 
+              (p) => p | (1n << 512n), 
               false, 
               (p) => `Leaf at location ${p.toString(2)} included`
             );
           });
+
+          it('extracting non-inclusion proofs for paths stopping inside existing branches', function() {
+            checkPaths(
+              smt, 
+              leaves, 
+              (p) => {
+                const pl = BigInt(p.toString(2).length) / 2n; 
+                const mask = (1n << pl) - 1n; 
+                return (p & mask) | (1n << pl);
+              }, 
+              false, 
+              (p) => `Leaf at location ${p.toString(2)} included`
+            );
+          });
+        });
+
+        if (i === 0) {
+          context('Trying to perform illegal leaf/value modifications', function() {
+            context('Setting different value at existing leaf', function() {
+              beforeEach(function() {
+                modifyValues(smt, leaves, (p) => p, /Cannot add leaf inside the leg/);
+              });
+
+              it('leaves values not changed', function() {
+                checkValues(smt, leaves, (p) => p);
+              });
+            });
+
+            context('Adding leaf including in its path already existing leaf', function() {
+              beforeEach(function() {
+                modifyValues(smt, leaves, (p) => p | (1n << 512n), /Cannot extend the leg through the leaf/);
+              });
+
+              it('leaves values not changed', function() {
+                checkPaths(
+                  smt, 
+                  leaves, 
+                  (p) => p | (1n << 512n), 
+                  false, 
+                  (p) => `Leaf at location ${p.toString(2)} included`
+                );
+                checkValues(smt, leaves, (p) => p);
+              });
+            });
+
+            context('Adding leaf inside a path of an already existing leaf', function() {
+              beforeEach(function() {
+                modifyValues(
+                  smt, 
+                  leaves, 
+                  (p) => {
+                    const pl = BigInt(p.toString(2).length) / 2n; 
+                    const mask = (1n << pl) - 1n; 
+                    return (p & mask) | (1n << pl);
+                  },
+                  /Cannot add leaf inside the leg/
+                );
+              });
+
+              it('leaves values not changed', function() {
+                checkPaths(
+                  smt, 
+                  leaves, 
+                  (p) => {
+                    const bitCountToHalf = BigInt(p.toString(2).length) / 2n; 
+                    const maskKeepingHalfLowerBits = (1n << bitCountToHalf) - 1n; 
+                    return (p & maskKeepingHalfLowerBits) | (1n << bitCountToHalf);
+                  }, 
+                  false, 
+                  (p) => `Leaf at location ${p.toString(2)} included`
+                );
+                checkValues(smt, leaves, (p) => p);
+              });
+            });
+          });
         }
-
-        it('extracting non-inclusion proofs for paths exceeding existing branches', function() {
-          checkPaths(
-            smt, 
-            leaves, 
-            (p) => p | (1n << 512n), 
-            false, 
-            (p) => `Leaf at location ${p.toString(2)} included`
-          );
-        });
-
-        it('extracting non-inclusion proofs for paths stopping inside existing branches', function() {
-          checkPaths(
-            smt, 
-            leaves, 
-            (p) => {
-              const pl = BigInt(p.toString(2).length) / 2n; 
-              const mask = (1n << pl) - 1n; 
-              return (p & mask) | (1n << pl);
-            }, 
-            false, 
-            (p) => `Leaf at location ${p.toString(2)} included`
-          );
-        });
       });
-
-      if (i === 0) {
-        context('Trying to perform illegal leaf/value modifications', function() {
-          context('Setting different value at existing leaf', function() {
-            beforeEach(function() {
-              modifyValues(smt, leaves, (p) => p, /Cannot add leaf inside the leg/);
-            });
-
-            it('leaves values not changed', function() {
-              checkValues(smt, leaves, (p) => p);
-            });
-          });
-
-          context('Adding leaf including in its path already existing leaf', function() {
-            beforeEach(function() {
-              modifyValues(smt, leaves, (p) => p | (1n << 512n), /Cannot extend the leg through the leaf/);
-            });
-
-            it('leaves values not changed', function() {
-              checkPaths(
-                smt, 
-                leaves, 
-                (p) => p | (1n << 512n), 
-                false, 
-                (p) => `Leaf at location ${p.toString(2)} included`
-              );
-              checkValues(smt, leaves, (p) => p);
-            });
-          });
-
-          context('Adding leaf inside a path of an already existing leaf', function() {
-            beforeEach(function() {
-              modifyValues(
-                smt, 
-                leaves, 
-                (p) => {
-                  const pl = BigInt(p.toString(2).length) / 2n; 
-                  const mask = (1n << pl) - 1n; 
-                  return (p & mask) | (1n << pl);
-                },
-                /Cannot add leaf inside the leg/
-              );
-            });
-
-            it('leaves values not changed', function() {
-              checkPaths(
-                smt, 
-                leaves, 
-                (p) => {
-                  const bitCountToHalf = BigInt(p.toString(2).length) / 2n; 
-                  const maskKeepingHalfLowerBits = (1n << bitCountToHalf) - 1n; 
-                  return (p & maskKeepingHalfLowerBits) | (1n << bitCountToHalf);
-                }, 
-                false, 
-                (p) => `Leaf at location ${p.toString(2)} included`
-              );
-              checkValues(smt, leaves, (p) => p);
-            });
-          });
-        });
-      }
-    });
-  }
+    }
+  });
 });
 
 class MyNode {

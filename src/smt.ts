@@ -230,7 +230,11 @@ function searchPath(node: InternalNode, remainingPath: bigint, sumCertifying: bo
   const direction = getDirection(remainingPath);
   if (direction === LEFT) {
     if (!node.left) {
-      return [{ type: 'noNode', direction: LEFT, siblingHash: node.right!.getHash()} as PathItemNoNode];
+      if (sumCertifying) {
+        return [{ type: 'noNode', direction: LEFT, siblingHash: node.right!.getHash(), siblingSum: node.right!.getSum()} as PathItemNoNode];
+      } else {
+        return [{ type: 'noNode', direction: LEFT, siblingHash: node.right!.getHash()} as PathItemNoNode];
+      }
     }
     const path = searchLeg(node.left, remainingPath, sumCertifying);
     if (path.length > 0) {
@@ -243,7 +247,11 @@ function searchPath(node: InternalNode, remainingPath: bigint, sumCertifying: bo
     return path;
   } else {
     if (!node.right) {
-      return [{ type: 'noNode', direction: RIGHT, siblingHash: node.left!.getHash()} as PathItemNoNode];
+      if (sumCertifying) {
+        return [{ type: 'noNode', direction: RIGHT, siblingHash: node.left!.getHash(), siblingSum: node.left!.getSum()} as PathItemNoNode];
+      } else {
+        return [{ type: 'noNode', direction: RIGHT, siblingHash: node.left!.getHash()} as PathItemNoNode];
+      }
     }
     const path = searchLeg(node.right, remainingPath, sumCertifying);
     if (path.length > 0) {
@@ -404,13 +412,18 @@ export class Path {
       h = (this.path[this.path.length - 1].type == 'leaf') ? 
         (this.path[this.path.length - 1] as PathItemLeaf).value as WordArray:
         (this.path[this.path.length - 1] as PathItemInternalNodeHashed).nodeHash as WordArray;
-    
+
+          
       if (this.path[this.path.length - 1].type == 'leaf') {
         if (isSumCertifying) {
           h = this.hashFunction(LEAF_PREFIX, h, (this.path[this.path.length - 1] as PathItemLeaf).numericValue!);
           sumSoFar = (this.path[this.path.length - 1] as PathItemLeaf).numericValue!;
         } else {
           h = this.hashFunction(LEAF_PREFIX, h);
+        }
+      } else if (this.path[this.path.length - 1].type == 'internalNodeHashed') {
+        if (isSumCertifying) {
+          sumSoFar = (this.path[this.path.length - 1] as PathItemInternalNodeHashed).sum!
         }
       }
     }

@@ -2,59 +2,79 @@
 import { assert } from 'chai';
 import { smthash, wordArrayToHex } from '@unicitylabs/utils';
 
-import { SMT, Path } from '../src/index.js';
+import { Leaf, SMT, Path } from '../src/index.js';
 
-describe('All possible tree shapes for depth of 3', function() {
-  const allPathBits = [
-    '000', '001', '010', '011', 
-    '100', '101', '110', '111'
-  ];
-  
-  const allPaths = allPathBits.map(bits => BigInt('0b1' + bits));
-  
-  it('should have all paths working correctly', function() {
-    this.timeout(100000);
+const testConfigs = [
+  {
+    name: 'SMT routines',
+    isSumTree: false,
+    createTree: (leaves: Leaf[]) => new SMT(smthash, leaves),
+  },
+  {
+    name: 'Sum tree routines',
+    isSumTree: true,
+    createTree: (leaves: Leaf[]) => new SMT(
+        smthash, 
+        leaves.map((leaf, index) => ({
+          ...leaf,
+          numericValue: BigInt(index)
+        })), 
+        true),
+  }
+];
 
-    for (let pathsBitmap = 0; pathsBitmap < 256; pathsBitmap++) {
-      const selectedPathsUnpremuted = selectPathsByBitmap(allPaths, pathsBitmap);
+testConfigs.forEach((config) => {
+  describe(`${config.name}: All possible tree shapes for depth of 3`, function() {
+    const allPathBits = [
+      '000', '001', '010', '011', 
+      '100', '101', '110', '111'
+    ];
+    
+    const allPaths = allPathBits.map(bits => BigInt('0b1' + bits));
+    
+    it('should have all paths working correctly', function() {
+      this.timeout(100000);
 
-      [selectedPathsUnpremuted, selectedPathsUnpremuted.reverse(), /*...permutations(selectedPathsUnpremuted)*/].forEach(selectedPaths => {
-        const tree = new SMT(
-          smthash, 
-          selectedPaths.map(path => {
-            return {
-              path: path,
-              value: wordArrayToHex(smthash(`value-${path}`))
-            };
-          })
-        );
-        assertPaths(selectedPaths, tree);
-      });
-      
-    }
+      for (let pathsBitmap = 0; pathsBitmap < 256; pathsBitmap++) {
+        const selectedPathsUnpremuted = selectPathsByBitmap(allPaths, pathsBitmap);
 
-    function assertPaths(selectedPaths: bigint[], tree: SMT) {
-      for (let j = 0; j < 8; j++) {
-        const path = allPaths[j];
-        const shouldBeIncluded = selectedPaths.includes(path);
-
-        const treePath = tree.getProof(path);
-
-        assert.equal(
-          safeIncludesPath(treePath, path),
-          shouldBeIncluded,
-          `Tree ${selectedPaths}: Path ${allPathBits[j]} should ${shouldBeIncluded ? '' : 'NOT '}be included`
-        );
-
-        if (shouldBeIncluded) {
-          assert.equal(
-            safeExtractValue(treePath),
-            wordArrayToHex(smthash(`value-${allPaths[j]}`)),
-            `Tree ${selectedPaths}: Value for path ${allPathBits[j]} is incorrect`
+        [selectedPathsUnpremuted, selectedPathsUnpremuted.reverse(), /*...permutations(selectedPathsUnpremuted)*/].forEach(selectedPaths => {
+          const tree = config.createTree(
+            selectedPaths.map(path => {
+              return {
+                path: path,
+                value: wordArrayToHex(smthash(`value-${path}`))
+              };
+            })
           );
+          assertPaths(selectedPaths, tree);
+        });
+        
+      }
+
+      function assertPaths(selectedPaths: bigint[], tree: SMT) {
+        for (let j = 0; j < 8; j++) {
+          const path = allPaths[j];
+          const shouldBeIncluded = selectedPaths.includes(path);
+
+          const treePath = tree.getProof(path);
+
+          assert.equal(
+            safeIncludesPath(treePath, path),
+            shouldBeIncluded,
+            `Tree ${selectedPaths}: Path ${allPathBits[j]} should ${shouldBeIncluded ? '' : 'NOT '}be included`
+          );
+
+          if (shouldBeIncluded) {
+            assert.equal(
+              safeExtractValue(treePath),
+              wordArrayToHex(smthash(`value-${allPaths[j]}`)),
+              `Tree ${selectedPaths}: Value for path ${allPathBits[j]} is incorrect`
+            );
+          }
         }
       }
-    }
+    });
   });
 });
 
