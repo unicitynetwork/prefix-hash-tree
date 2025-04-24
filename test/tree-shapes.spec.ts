@@ -2,24 +2,24 @@
 import { assert } from 'chai';
 import { smthash, wordArrayToHex } from '@unicitylabs/utils';
 
-import { Leaf, SMT, Path } from '../src/index.js';
+import { Leaf, SMT, SumTree, Path, SumPath } from '../src/index.js';
+
+type Tree = SMT | SumTree;
 
 const testConfigs = [
   {
     name: 'SMT routines',
     isSumTree: false,
-    createTree: (leaves: Leaf[]) => new SMT(smthash, leaves),
+    createTree: (leaves: Map<bigint, Leaf>) => new SMT(smthash, leaves),
   },
   {
     name: 'Sum tree routines',
     isSumTree: true,
-    createTree: (leaves: Leaf[]) => new SMT(
+    createTree: (leaves: Map<bigint, Leaf>) => new SumTree(
         smthash, 
-        leaves.map((leaf, index) => ({
-          ...leaf,
-          numericValue: BigInt(index)
-        })), 
-        true),
+        new Map(Array.from(leaves).map(([path, leaf]) => (
+          [ path, {...leaf, numericValue: path + 99n} ]
+        )))),
   }
 ];
 
@@ -40,19 +40,18 @@ testConfigs.forEach((config) => {
 
         [selectedPathsUnpremuted, selectedPathsUnpremuted.reverse(), /*...permutations(selectedPathsUnpremuted)*/].forEach(selectedPaths => {
           const tree = config.createTree(
-            selectedPaths.map(path => {
-              return {
-                path: path,
-                value: wordArrayToHex(smthash(`value-${path}`))
-              };
-            })
+            new Map(
+              selectedPaths.map(path => {
+                return [ path, { value: wordArrayToHex(smthash(`value-${path}`)) } ];
+              })
+            )
           );
           assertPaths(selectedPaths, tree);
         });
         
       }
 
-      function assertPaths(selectedPaths: bigint[], tree: SMT) {
+      function assertPaths(selectedPaths: bigint[], tree: Tree) {
         for (let j = 0; j < 8; j++) {
           const path = allPaths[j];
           const shouldBeIncluded = selectedPaths.includes(path);
@@ -84,7 +83,7 @@ function selectPathsByBitmap(allPaths: bigint[], pathsCombination: number) {
   });
 }
 
-function safeIncludesPath(treePath: Path, path: bigint): boolean {
+function safeIncludesPath(treePath: Path | SumPath, path: bigint): boolean {
   try {
     const result = treePath.provesInclusionAt(path);
     return result;
@@ -99,7 +98,7 @@ function safeIncludesPath(treePath: Path, path: bigint): boolean {
   }
 }
 
-function safeExtractValue(treePath: Path): string | undefined {
+function safeExtractValue(treePath: Path | SumPath): string | undefined {
   try {
     const value = treePath.getLeafValue();
     return typeof value === 'string' ? value : undefined;

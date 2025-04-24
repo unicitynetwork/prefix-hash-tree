@@ -2,30 +2,31 @@
 import { assert } from 'chai';
 import { smthash, wordArrayToHex } from '@unicitylabs/utils';
 
+import { Leaf, SMT, SumTree, AbstractTree, WordArray, getCommonPathBits } from '../src/index.js';
 
-import { Leaf, SMT, WordArray, getCommonPathBits } from '../src/index.js';
+type Tree = SMT | SumTree;
 
 function checkPaths(
-  smt: SMT, 
-  leaves: Leaf[], 
+  smt: Tree, 
+  leaves: Map<bigint, Leaf>, 
   pathTransformFunc: (path: bigint) => bigint, 
   shouldBeIncluded: boolean, 
   failMsg: (path: bigint) => string
 ): void {
-  for (const leaf of leaves) {
-    const requestedPath = pathTransformFunc(leaf.path);
+  for (const [pathNum, leaf] of leaves) {
+    const requestedPath = pathTransformFunc(pathNum);
     const path = smt.getProof(requestedPath);
     assert.equal(path.provesInclusionAt(requestedPath), shouldBeIncluded, failMsg(requestedPath));
   }
 }
 
 function checkValues(
-  smt: SMT, 
-  leaves: Leaf[], 
+  smt: Tree, 
+  leaves: Map<bigint, Leaf>, 
   pathTransformFunc: (path: bigint) => bigint
 ): void {
-  for (const leaf of leaves) {
-    const requestedPath = pathTransformFunc(leaf.path);
+  for (const [pathNum, leaf] of leaves) {
+    const requestedPath = pathTransformFunc(pathNum);
     const path = smt.getProof(requestedPath);
     assert.equal(
       path.getLeafValue(), 
@@ -36,17 +37,23 @@ function checkValues(
 }
 
 function modifyValues(
-  smt: SMT, 
-  leaves: Leaf[], 
+  smt: Tree, 
+  leaves: Map<bigint, Leaf>, 
   pathTransformFunc: (path: bigint) => bigint,
   errorMessage: RegExp
 ): void {
-  for (const leaf of leaves) {
-    const requestedPath = pathTransformFunc(leaf.path);
+  for (const [path, leaf] of leaves) {
+    const requestedPath = pathTransformFunc(path);
     
     assert.throws(
       () => {
-        smt.addLeaf(requestedPath, wordArrayToHex(smthash('different value')));
+        if (smt instanceof SMT) {
+          smt.addLeaf(requestedPath, {value: wordArrayToHex(smthash('different value'))});
+        } else if (smt instanceof SumTree) {
+          smt.addLeaf(requestedPath, {value: wordArrayToHex(smthash('different value')), numericValue: 123456n});
+        } else {
+          throw new Error('Unknonw tree type');
+        }
       },
       Error,
       errorMessage 
@@ -54,35 +61,33 @@ function modifyValues(
   }
 }
 
-function generatePaths(l: number): Leaf[] {
-  const leaves: Leaf[] = [];
+function generatePaths(l: number): Map<bigint, Leaf> {
+  const leaves: Array<[bigint, Leaf]> = [];
   const trail = (1n << BigInt(l));
   for (let i = 0n; i < trail; i++) {
     const path = i | trail;
-    leaves.push({
+    leaves.push([
       path, 
-      value: wordArrayToHex(smthash('value' + path.toString(2).substring(1)))
-    });
+      { value: wordArrayToHex(smthash('value' + path.toString(2).substring(1))) }
+    ]);
   }
-  return leaves;
+  return new Map(leaves);
 }
 
 const testConfigs = [
   {
     name: 'SMT routines',
     isSumTree: false,
-    createTree: (leaves: Leaf[]) => new SMT(smthash, leaves),
+    createTree: (leaves: Map<bigint, Leaf>) => new SMT(smthash, leaves),
   },
   {
     name: 'Sum tree routines',
     isSumTree: true,
-    createTree: (leaves: Leaf[]) => new SMT(
+    createTree: (leaves: Map<bigint, Leaf>) => new SumTree(
         smthash, 
-        leaves.map((leaf, index) => ({
-          ...leaf,
-          numericValue: BigInt(index)
-        })), 
-        true),
+        new Map(Array.from(leaves).map(([path, leaf]) => (
+          [ path, {...leaf, numericValue: path + 99n} ]
+        )))),
   }
 ];
 
@@ -90,18 +95,18 @@ testConfigs.forEach((config) => {
   describe(config.name, function() {
     for (let i = 0; i < 1; i++) {
       context(i === 0 ? 'sparse tree' : 'filled tree', function() {
-        const leaves = i === 0 ? [
-          { path: 0b100000000n, value: wordArrayToHex(smthash('value00000000')) },
-          { path: 0b100010000n, value: wordArrayToHex(smthash('value00010000')) },
-          { path: 0b111100101n, value: smthash('value11100101') as WordArray },
-          { path:      0b1100n, value: smthash('value100') as WordArray },
-          { path:      0b1011n, value: smthash('value011') as WordArray },
-          { path: 0b111101111n, value: wordArrayToHex(smthash('value11101111')) },
-          { path:  0b10001010n, value: smthash('value0001010') as WordArray },
-          { path:  0b11010101n, value: smthash('value1010101') as WordArray }
-        ] : generatePaths(7);
+        const leaves = i === 0 ? new Map<bigint, Leaf>([
+          [ 0b100000000n, {value: wordArrayToHex(smthash('value00000000'))} ],
+          [ 0b100010000n, {value: wordArrayToHex(smthash('value00010000'))} ],
+          [ 0b111100101n, {value: smthash('value11100101') as WordArray} ],
+          [      0b1100n, {value: smthash('value100') as WordArray} ],
+          [      0b1011n, {value: smthash('value011') as WordArray} ],
+          [ 0b111101111n, {value: wordArrayToHex(smthash('value11101111'))} ],
+          [  0b10001010n, {value: smthash('value0001010') as WordArray} ],
+          [  0b11010101n, {value: smthash('value1010101') as WordArray} ]
+        ]) : generatePaths(7);
 
-        let smt: SMT;
+        let smt: Tree;
 
         beforeEach(function() {
           smt = config.createTree(leaves);
@@ -112,7 +117,7 @@ testConfigs.forEach((config) => {
             assert.equal(
               smt.getRootHash().toString(), 
               config.isSumTree ? 
-                  '601693d1c3d79505bee3b68490dcf378a32ff5c53a30f55ee23b11e562fe536a':
+                  'f30b5cfdcc126f1405d61fbe8de09d49810291f2e1ae8d44e8a6a3689221ee9c':
                   '220f4310e01a338279c83efc9b54cdc55cc6c6a3e49bda43de6173baaeb1aa6b');
           });
         });

@@ -5,53 +5,40 @@ export type WordArray = CryptoJS.WordArray;
 export type HashFunction = (...inputs: (WordArray | bigint | string | null)[]) => WordArray;
 
 export interface Leaf {
-  path: bigint;
   value: string | WordArray;
-  numericValue?: bigint;
 }
 
-export interface PathItemRoot {
+export interface PathItem {}
+
+export interface PathItemRoot extends PathItem {
   type: 'root';
   rootHash: WordArray;
-  sum?: bigint;
 }
 
-export interface PathItemInternalNode {
+export interface PathItemInternalNode extends PathItem {
   type: 'internalNode';
   prefix: bigint;
   siblingHash: WordArray | undefined;
-  siblingSum?: bigint;
 }
 
-export interface PathItemInternalNodeHashed {
+export interface PathItemInternalNodeHashed extends PathItem {
   type: 'internalNodeHashed';
   nodeHash: WordArray;
-  sum?: bigint;
 }
 
-export interface PathItemNoNode {
+export interface PathItemNoNode extends PathItem {
   type: 'noNode';
   direction: bigint;
   siblingHash: WordArray;
-  siblingSum?: bigint;
 }
 
-export interface PathItemLeaf {
+export interface PathItemLeaf extends PathItem {
   type: 'leaf';
   value: string | WordArray;
-  numericValue?: bigint;
 }
 
-export type PathItem  =
-  | PathItemRoot
-  | PathItemInternalNode
-  | PathItemInternalNodeHashed
-  | PathItemNoNode
-  | PathItemLeaf;
-
-export interface PrefixSplit {
+export interface PrefixSplit extends PathItem {
   prefix: bigint;
   pathSuffix: bigint;
   legSuffix: bigint;
 }
-
