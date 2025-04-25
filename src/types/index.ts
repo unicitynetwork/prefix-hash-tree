@@ -26,8 +26,8 @@ export interface PathItemInternalNodeHashed extends PathItem {
   nodeHash: WordArray;
 }
 
-export interface PathItemNoNode extends PathItem {
-  type: 'noNode';
+export interface PathItemEmptyBranch extends PathItem {
+  type: 'emptyBranch';
   direction: bigint;
   siblingHash: WordArray;
 }

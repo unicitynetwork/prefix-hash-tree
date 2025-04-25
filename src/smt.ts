@@ -2,7 +2,7 @@
 import { wordArrayToHex } from '@unicitylabs/utils';
 
 import { HashFunction, Leaf, PathItem, PathItemRoot, PathItemInternalNode,
-  PathItemInternalNodeHashed, PathItemNoNode, PathItemLeaf, 
+  PathItemInternalNodeHashed, PathItemEmptyBranch, PathItemLeaf, 
   WordArray } from './types/index.js';
 
 export const LEFT: bigint = 0n;
@@ -17,11 +17,13 @@ export abstract class AbstractTree<
       LeafNodeType extends AbstractLeafNode<LeafNodeType, InternalNodeType, LegType>,
       LeafType extends Leaf,
       LegType extends AbstractLeg<LeafNodeType, InternalNodeType, LegType>,
+      PathItemRootType extends PathItem,
       PathItemInternalNodeType extends PathItem,
       PathItemInternalNodeHashedType extends PathItem,
       PathItemLeafType extends PathItem,
-      PathItemNoNodeType extends PathItem,
-      PathType extends AbstractPath> {
+      PathItemEmptyBranchType extends PathItem,
+      PathType extends AbstractPath> 
+{
   protected hashFunction: HashFunction;
   protected root: InternalNodeType;
 
@@ -34,9 +36,9 @@ export abstract class AbstractTree<
     if (this.isEmpty()) {
       return this.createPathForEmptyTree();
     }
-    const path = this.searchPath(this.root, requestPath);
-    path.unshift(this.createPathItemRoot());
-    return this.createPath(path);
+    const pathItems = this.searchPath(this.root, requestPath);
+    pathItems.unshift(this.createPathItemRoot());
+    return this.createPath(pathItems);
   }
 
   public isEmpty(): boolean {
@@ -51,16 +53,6 @@ export abstract class AbstractTree<
     return this.root.getHash();
   }
 
-  protected abstract createPath(pathItems: PathItem[]): PathType;
-
-  protected abstract createNewLeaf(leaf: LeafType): LeafNodeType;
-
-  protected abstract createPathForEmptyTree(): PathType;
-
-  protected createPathItemRoot(): PathItem {
-    return { type: 'root', rootHash: this.root.getHash() };
-  }
-
   protected buildTree(leavesByPath: Map<bigint, LeafType>): InternalNodeType {
     const root = this.createInternalNode();
 
@@ -69,8 +61,6 @@ export abstract class AbstractTree<
     }
     return root;
   }
-
-  protected abstract createInternalNode(): InternalNodeType;
 
   protected traverse(
     node: InternalNodeType, 
@@ -85,17 +75,11 @@ export abstract class AbstractTree<
     }
   }
 
-  protected abstract createNoNodePathItemForLeftDirection(node: InternalNodeType): PathItemNoNodeType;
-  protected abstract createNoNodePathItemForRightDirection(node: InternalNodeType): PathItemNoNodeType;
-
-  protected abstract addSiblingDataToLeft(pathItem: PathItem, node: InternalNodeType): void;
-  protected abstract addSiblingDataToRight(pathItem: PathItem, node: InternalNodeType): void;
-
   protected searchPath(node: InternalNodeType, remainingPath: bigint): PathItem[] {
     const direction = getDirection(remainingPath);
     if (direction === LEFT) {
       if (!node.left) {
-        return [this.createNoNodePathItemForLeftDirection(node)];
+        return [this.createEmptyLeftBranchPathItem(node)];
       }
       const path = this.searchLeg(node.left, remainingPath);
       if (path.length > 0) {
@@ -104,7 +88,7 @@ export abstract class AbstractTree<
       return path;
     } else {
       if (!node.right) {
-        return [this.createNoNodePathItemForRightDirection(node)];
+        return [this.createEmptyRightBranchPathItem(node)];
       }
       const path = this.searchLeg(node.right, remainingPath);
       if (path.length > 0) {
@@ -113,14 +97,6 @@ export abstract class AbstractTree<
       return path;
     }
   }
-
-  protected abstract createPathItemInternalNode(prefix: bigint): PathItemInternalNodeType;
-
-  protected abstract createPathItemLeafNode(leaf: LeafNodeType): PathItemLeafType;
-
-  protected abstract createPathItemInternalNodeHashed(node: InternalNodeType): PathItemInternalNodeHashedType;
-
-  protected abstract createLeg(remainingPath: bigint, child: LeafNodeType | InternalNodeType): LegType;
 
   protected searchLeg(leg: LegType, remainingPath: bigint): PathItem[] {
     const { commonPrefix, remainingPathUniqueSuffix, existingPrefixUniqueSuffix } = 
@@ -134,8 +110,7 @@ export abstract class AbstractTree<
       } else if (leg.child.isInternal()) {
         // TODO: refactor: if the path would go to the child node (that is, key still may or may not be in the tree, need to continue traversing).
         const path = this.searchPath(leg.child, remainingPathUniqueSuffix);
-        const item: PathItemInternalNodeType  = this.createPathItemInternalNode(commonPrefix);
-        path.unshift(item);
+        path.unshift(this.createPathItemInternalNode(commonPrefix));
         return path;
       } else {
         throw new Error('Unknown node type');
@@ -211,10 +186,36 @@ export abstract class AbstractTree<
     this.traverse(junction, remainingPathUniqueSuffix, leaf);
     return leg;
   }
+
+  protected abstract createPath(pathItems: PathItem[]): PathType;
+
+  protected abstract createNewLeaf(leaf: LeafType): LeafNodeType;
+
+  protected abstract createPathForEmptyTree(): PathType;
+
+  protected abstract createPathItemRoot(): PathItemRootType;
+
+  protected abstract createInternalNode(): InternalNodeType;
+
+  protected abstract createEmptyLeftBranchPathItem(node: InternalNodeType): PathItemEmptyBranchType;
+
+  protected abstract createEmptyRightBranchPathItem(node: InternalNodeType): PathItemEmptyBranchType;
+
+  protected abstract addSiblingDataToLeft(pathItem: PathItem, node: InternalNodeType): void;
+
+  protected abstract addSiblingDataToRight(pathItem: PathItem, node: InternalNodeType): void;
+
+  protected abstract createPathItemInternalNode(prefix: bigint): PathItemInternalNodeType;
+
+  protected abstract createPathItemLeafNode(leaf: LeafNodeType): PathItemLeafType;
+
+  protected abstract createPathItemInternalNodeHashed(node: InternalNodeType): PathItemInternalNodeHashedType;
+
+  protected abstract createLeg(remainingPath: bigint, child: LeafNodeType | InternalNodeType): LegType;
 }
 
-export class SMT extends AbstractTree<InternalNode, LeafNode, Leaf, Leg, PathItemInternalNode, PathItemInternalNodeHashed, 
-    PathItemLeaf, PathItemNoNode, Path> 
+export class SMT extends AbstractTree<InternalNode, LeafNode, Leaf, Leg, PathItemRoot, PathItemInternalNode, 
+                         PathItemInternalNodeHashed, PathItemLeaf, PathItemEmptyBranch, Path> 
 {
   protected createPathForEmptyTree(): Path {
     return new Path (
@@ -234,12 +235,16 @@ export class SMT extends AbstractTree<InternalNode, LeafNode, Leaf, Leg, PathIte
     return new LeafNode(this.hashFunction, leaf.value);
   }
 
-  protected createNoNodePathItemForLeftDirection(node: InternalNode): PathItemNoNode {
-    return { type: 'noNode', direction: LEFT, siblingHash: node.right!.getHash()};
+  protected createPathItemRoot(): PathItemRoot {
+    return { type: 'root', rootHash: this.root.getHash() };
   }
 
-  protected createNoNodePathItemForRightDirection(node: InternalNode): PathItemNoNode {
-    return { type: 'noNode', direction: RIGHT, siblingHash: node.left!.getHash()};
+  protected createEmptyLeftBranchPathItem(node: InternalNode): PathItemEmptyBranch {
+    return { type: 'emptyBranch', direction: LEFT, siblingHash: node.right!.getHash()};
+  }
+
+  protected createEmptyRightBranchPathItem(node: InternalNode): PathItemEmptyBranch {
+    return { type: 'emptyBranch', direction: RIGHT, siblingHash: node.left!.getHash()};
   }
 
   protected createPathItemInternalNode(prefix: bigint): PathItemInternalNode {
@@ -395,12 +400,12 @@ export abstract class AbstractPath {
 
     let h: WordArray;
 
-    if (this.isNoNode(this.path[this.path.length - 1])) {
-      const lastPathItem = this.path[this.path.length - 1] as PathItemNoNode;
+    if (this.isEmptyBranch(this.path[this.path.length - 1])) {
+      const lastPathItem = this.path[this.path.length - 1] as PathItemEmptyBranch;
       if (getDirection(lastPathItem.direction) === LEFT) {
-        h = context.hashLeftNoNode(lastPathItem);
+        h = context.hashLeftEmptyBranch(lastPathItem);
       } else {
-        h = context.hashRightNoNode(lastPathItem);
+        h = context.hashRightEmptyBranch(lastPathItem);
       }
     } else {
       if ((!(this.path[this.path.length - 1] as PathItemLeaf).value) &&
@@ -441,7 +446,7 @@ export abstract class AbstractPath {
       return false;
     }
     const lastItemAsSupertype = this.path[this.path.length - 1];
-    if (this.isNoNode(lastItemAsSupertype)) {
+    if (this.isEmptyBranch(lastItemAsSupertype)) {
       return false;
     }
     const extractedLocation = this.getLocation();
@@ -510,7 +515,7 @@ export abstract class AbstractPath {
 
   protected abstract isLeaf(pathItem: PathItem): boolean;
 
-  protected abstract isNoNode(pathItem: PathItem): boolean;
+  protected abstract isEmptyBranch(pathItem: PathItem): boolean;
 
   protected abstract getNodeHashFromInternalNodeHashed(pathItem: PathItem): WordArray;
 
@@ -529,8 +534,8 @@ export abstract class AbstractPath {
 }
 
 export class Path extends AbstractPath {
-  protected isNoNode(pathItem: PathItem): boolean {
-    return 'type' in pathItem && pathItem.type == 'noNode';
+  protected isEmptyBranch(pathItem: PathItem): boolean {
+    return 'type' in pathItem && pathItem.type == 'emptyBranch';
   }
 
   protected isLeaf(pathItem: PathItem): boolean {
@@ -561,15 +566,15 @@ export class Path extends AbstractPath {
           pathItem.siblingHash ? pathItem.siblingHash : null, 
           legHash);
       },
-      hashLeftNoNode(pathItemAsSupertype: PathItem) {
-        const pathItem = pathItemAsSupertype as PathItemNoNode;
+      hashLeftEmptyBranch(pathItemAsSupertype: PathItem) {
+        const pathItem = pathItemAsSupertype as PathItemEmptyBranch;
         return hashFunction(
           NODE_PREFIX, 
           null, 
           pathItem.siblingHash);
       },
-      hashRightNoNode(pathItemAsSupertype: PathItem) {
-        const pathItem = pathItemAsSupertype as PathItemNoNode;
+      hashRightEmptyBranch(pathItemAsSupertype: PathItem) {
+        const pathItem = pathItemAsSupertype as PathItemEmptyBranch;
         return hashFunction(
           NODE_PREFIX, 
           pathItem.siblingHash, 
@@ -590,8 +595,8 @@ export interface VerificationContext {
   pathItemProcessed(pathItem: PathItem): void;
   hashLeftNode(pathItem: PathItem, legHash: WordArray): WordArray;
   hashRightNode(pathItem: PathItem, legHash: WordArray): WordArray;
-  hashLeftNoNode(pathItem: PathItem): WordArray;
-  hashRightNoNode(pathItem: PathItem): WordArray;
+  hashLeftEmptyBranch(pathItem: PathItem): WordArray;
+  hashRightEmptyBranch(pathItem: PathItem): WordArray;
   hashLeaf(pathItem: PathItem): WordArray;
   hashLeg(prefix: bigint, childHash: WordArray): WordArray;
 }

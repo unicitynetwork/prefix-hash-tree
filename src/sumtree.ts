@@ -1,15 +1,15 @@
 import { AbstractTree, LEFT, RIGHT, AbstractLeafNode, LEAF_PREFIX, AbstractInternalNode, NODE_PREFIX, AbstractLeg, AbstractPath, LEG_PREFIX, VerificationContext } from './smt.js';
 import { HashFunction, PathItem, PathItemRoot, WordArray } from './types/index.js';
 import { SumPathItemLeaf } from './types/sumtreeindex.js';
-import { SumPathItemNoNode } from './types/sumtreeindex.js';
+import { SumPathItemEmptyBranch } from './types/sumtreeindex.js';
 import { SumPathItemInternalNodeHashed } from './types/sumtreeindex.js';
 import { SumPathItemInternalNode } from './types/sumtreeindex.js';
 import { SumPathItemRoot } from './types/sumtreeindex.js';
 import { SumLeaf } from './types/sumtreeindex.js';
 
 
-export class SumTree extends AbstractTree<SumInternalNode, SumLeafNode, SumLeaf, SumLeg, 
-    SumPathItemInternalNode, SumPathItemInternalNodeHashed, SumPathItemLeaf, SumPathItemNoNode, 
+export class SumTree extends AbstractTree<SumInternalNode, SumLeafNode, SumLeaf, SumLeg, SumPathItemRoot,
+    SumPathItemInternalNode, SumPathItemInternalNodeHashed, SumPathItemLeaf, SumPathItemEmptyBranch, 
     SumPath> 
 {
   public constructor(hashFunction: HashFunction, leavesByPath: Map<bigint, SumLeaf>) {
@@ -34,7 +34,7 @@ export class SumTree extends AbstractTree<SumInternalNode, SumLeafNode, SumLeaf,
     return new SumLeafNode(this.hashFunction, leaf.value, leaf.numericValue);
   }
 
-  protected createPathItemRoot(): PathItem {
+  protected createPathItemRoot(): SumPathItemRoot {
     return { type: 'sumRoot', rootHash: this.root.getHash(), sum: this.root.getSum() } as SumPathItemRoot;
   }
 
@@ -42,12 +42,12 @@ export class SumTree extends AbstractTree<SumInternalNode, SumLeafNode, SumLeaf,
     return new SumInternalNode(this.hashFunction);
   }
 
-  protected createNoNodePathItemForLeftDirection(node: SumInternalNode): SumPathItemNoNode {
-    return { type: 'sumNoNode', direction: LEFT, siblingHash: node.right!.getHash(), siblingSum: node.right!.getSum() };
+  protected createEmptyLeftBranchPathItem(node: SumInternalNode): SumPathItemEmptyBranch {
+    return { type: 'sumEmptyBranch', direction: LEFT, siblingHash: node.right!.getHash(), siblingSum: node.right!.getSum() };
   }
 
-  protected createNoNodePathItemForRightDirection(node: SumInternalNode): SumPathItemNoNode {
-    return { type: 'sumNoNode', direction: RIGHT, siblingHash: node.left!.getHash(), siblingSum: node.left!.getSum() };
+  protected createEmptyRightBranchPathItem(node: SumInternalNode): SumPathItemEmptyBranch {
+    return { type: 'sumEmptyBranch', direction: RIGHT, siblingHash: node.left!.getHash(), siblingSum: node.left!.getSum() };
   }
 
   protected createPathItemInternalNode(prefix: bigint): SumPathItemInternalNode {
@@ -161,8 +161,8 @@ export class SumPath extends AbstractPath {
     return (this.path[0] as SumPathItemRoot).sum;
   }
 
-  protected isNoNode(pathItem: PathItem): boolean {
-    return 'type' in pathItem && pathItem.type == 'sumNoNode';
+  protected isEmptyBranch(pathItem: PathItem): boolean {
+    return 'type' in pathItem && pathItem.type == 'sumEmptyBranch';
   }
 
   protected isLeaf(pathItem: PathItem): boolean {
@@ -181,7 +181,7 @@ export class SumPath extends AbstractPath {
           sumSoFar = (pathItem as SumPathItemLeaf).numericValue;
         } else if ('type' in pathItem && pathItem.type == 'sumInternalNodeHashed') {
           sumSoFar = (pathItem as SumPathItemInternalNodeHashed).sum;
-        } else if ('type' in pathItem && pathItem.type == 'sumNoNode') {
+        } else if ('type' in pathItem && pathItem.type == 'sumEmptyBranch') {
           sumSoFar = 0n;
         } else {
           throw new Error(`Unsupported PathItem type`);
@@ -214,8 +214,8 @@ export class SumPath extends AbstractPath {
           sumSoFar
         );
       },
-      hashLeftNoNode(pathItemAsSupertype: PathItem): WordArray {
-        const pathItem = pathItemAsSupertype as SumPathItemNoNode;
+      hashLeftEmptyBranch(pathItemAsSupertype: PathItem): WordArray {
+        const pathItem = pathItemAsSupertype as SumPathItemEmptyBranch;
         return hashFunction(
           NODE_PREFIX,
           null,
@@ -223,8 +223,8 @@ export class SumPath extends AbstractPath {
           null,
           pathItem.siblingSum);
       },
-      hashRightNoNode(pathItemAsSupertype: PathItem): WordArray {
-        const pathItem = pathItemAsSupertype as SumPathItemNoNode;
+      hashRightEmptyBranch(pathItemAsSupertype: PathItem): WordArray {
+        const pathItem = pathItemAsSupertype as SumPathItemEmptyBranch;
         return hashFunction(
           NODE_PREFIX,
           pathItem.siblingHash,

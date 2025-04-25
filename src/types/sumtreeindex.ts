@@ -24,8 +24,8 @@ export interface SumPathItemInternalNodeHashed extends PathItem {
   sum: bigint;
 }
 
-export interface SumPathItemNoNode extends PathItem {
-  type: 'sumNoNode';
+export interface SumPathItemEmptyBranch extends PathItem {
+  type: 'sumEmptyBranch';
   direction: bigint;
   siblingHash: WordArray;
   siblingSum: bigint;
