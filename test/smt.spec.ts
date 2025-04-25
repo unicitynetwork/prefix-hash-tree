@@ -2,7 +2,7 @@
 import { assert } from 'chai';
 import { smthash, wordArrayToHex } from '@unicitylabs/utils';
 
-import { Leaf, SMT, SumTree, AbstractTree, WordArray, getCommonPathBits } from '../src/index.js';
+import { Leaf, SMT, SumTree, AbstractTree, WordArray, getCommonPathBits, splitPrefix, Path } from '../src/index.js';
 
 type Tree = SMT | SumTree;
 
@@ -264,5 +264,91 @@ describe('Utility functions', function() {
     assert.equal(getCommonPathBits('10', '00'), '0');
 
     assert.equal(getCommonPathBits('01111', '10111'), '111');
-  })
+  });
+
+  it('splitPrefix', function() {
+    assert.throws(() => {splitPrefix(0b0n, 0b0n)}, Error, /Invalid path or prefix: 0/);
+    assert.throws(() => {splitPrefix(0b1n, 0b0n)}, Error, /Invalid path or prefix: 0/);
+    assert.throws(() => {splitPrefix(0b0n, 0b1n)}, Error, /Invalid path or prefix: 0/);
+
+    // Equal paths
+    assert.deepStrictEqual(
+        splitPrefix(0b1n, 0b1n), 
+        { commonPrefix: 0b1n, remainingPathUniqueSuffix: 0b1n, existingPrefixUniqueSuffix: 0b1n });
+    assert.deepStrictEqual(
+        splitPrefix(0b10n, 0b10n), 
+        { commonPrefix: 0b10n, remainingPathUniqueSuffix: 0b1n, existingPrefixUniqueSuffix: 0b1n });
+    assert.deepStrictEqual(
+        splitPrefix(0b100n, 0b100n), 
+        { commonPrefix: 0b100n, remainingPathUniqueSuffix: 0b1n, existingPrefixUniqueSuffix: 0b1n });
+    assert.deepStrictEqual(
+        splitPrefix(0b101n, 0b101n), 
+        { commonPrefix: 0b101n, remainingPathUniqueSuffix: 0b1n, existingPrefixUniqueSuffix: 0b1n });
+
+    // Completely different paths
+    assert.deepStrictEqual(
+        splitPrefix(0b101n, 0b110n), 
+        { commonPrefix: 0b1n, remainingPathUniqueSuffix: 0b101n, existingPrefixUniqueSuffix: 0b110n });
+
+    // Paths similar from the end
+    assert.deepStrictEqual(
+        splitPrefix(0b101n, 0b111n), 
+        { commonPrefix: 0b11n, remainingPathUniqueSuffix: 0b10n, existingPrefixUniqueSuffix: 0b11n });
+
+    // Path similarity from the start
+    assert.deepStrictEqual(
+        splitPrefix(0b100n, 0b101n), 
+        { commonPrefix: 0b1n, remainingPathUniqueSuffix: 0b100n, existingPrefixUniqueSuffix: 0b101n });
+  });
+
+  it('getLocation', function() {
+    // Empty tree
+    assert.equal(
+      new Path([
+        {type: 'root', rootHash: 9}
+      ], smthash).getLocation(), 
+      0b1n);
+
+    assert.throws(
+      () => {
+        new Path([
+          {type: 'root', rootHash: 9},
+          {type: 'internalNode', prefix: 0b0n, siblingHash: 9},
+          {type: 'leaf', value: 'v'}
+        ], smthash).getLocation()
+      }, 
+      Error, 
+      /Invalid path or prefix: 0/);
+
+    // An edge on the left
+    assert.equal(
+      new Path([
+        {type: 'root', rootHash: 9},
+        {type: 'internalNode', prefix: 0b10n, siblingHash: 9},
+        {type: 'leaf', value: 'v'}
+      ], smthash).getLocation(), 
+      0b10n);
+
+    // A edge on the left with a longer prefix 
+    assert.equal(
+      new Path([
+        {type: 'root', rootHash: 9},
+        {type: 'internalNode', prefix: 0b1110n, siblingHash: 9},
+        {type: 'leaf', value: 'v'}
+      ], smthash).getLocation(), 
+      0b1110n);
+
+    // Several nodes on the path
+    assert.equal(
+      new Path([
+        {type: 'root', rootHash: 9},
+        {type: 'internalNode', prefix: 0b1_0n, siblingHash: 9},
+        {type: 'internalNode', prefix: 0b1_0n, siblingHash: 9},
+        {type: 'internalNode', prefix: 0b1_01n, siblingHash: 9},
+        {type: 'internalNode', prefix: 0b1_0111n, siblingHash: 9},
+        {type: 'internalNode', prefix: 0b1_0n, siblingHash: 9},
+        {type: 'leaf', value: 'v'}
+      ], smthash).getLocation(), 
+      0b1_0_0111_01_0_0n);
+  });
 });

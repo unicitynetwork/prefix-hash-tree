@@ -33,6 +33,7 @@ export abstract class AbstractTree<
   }
 
   public getProof(requestPath: bigint): PathType {
+    validatePath(requestPath);
     if (this.isEmpty()) {
       return this.createPathForEmptyTree();
     }
@@ -46,6 +47,7 @@ export abstract class AbstractTree<
   }
 
   public addLeaf(requestPath: bigint, leaf: LeafType): void {
+    validatePath(requestPath);
     this.traverse(this.root, requestPath, leaf);
   }
 
@@ -57,6 +59,7 @@ export abstract class AbstractTree<
     const root = this.createInternalNode();
 
     for (const [path, leaf] of leavesByPath) {
+      validatePath(path);
       this.traverse(root, path, leaf);
     }
     return root;
@@ -100,7 +103,7 @@ export abstract class AbstractTree<
 
   protected searchLeg(leg: LegType, remainingPath: bigint): PathItem[] {
     const { commonPrefix, remainingPathUniqueSuffix, existingPrefixUniqueSuffix } = 
-        this.splitPrefix(remainingPath, leg.prefix);
+        splitPrefix(remainingPath, leg.prefix);
 
     // TODO: refactor: if the path leads to the children of this leg... .
     if (commonPrefix === leg.prefix) {
@@ -128,28 +131,6 @@ export abstract class AbstractTree<
     return [item, valueItem];
   }
 
-  protected splitPrefix(remainingPath: bigint, existingPrefix: bigint): 
-      { commonPrefix: bigint; remainingPathUniqueSuffix: bigint; existingPrefixUniqueSuffix: bigint; } 
-  {
-    // Find the position where prefix and sequence differ
-    let mask = 1n;
-    const remainingPathLen = remainingPath.toString(2).length - 1;
-    const existingPrefixLen = existingPrefix.toString(2).length - 1;
-    const minLen =  Math.min(remainingPathLen, existingPrefixLen);
-
-    let firstDifferencePos = 0n;
-    while ((remainingPath & mask) === (existingPrefix & mask) && firstDifferencePos < minLen) {
-      firstDifferencePos++;
-      mask <<= 1n;
-    }
-
-    const commonPrefix = (remainingPath & ((1n << firstDifferencePos) - 1n)) | (1n << firstDifferencePos);
-    const remainingPathUniqueSuffix = remainingPath >> firstDifferencePos;
-    const existingPrefixUniqueSuffix = existingPrefix >> firstDifferencePos;
-
-    return {commonPrefix, remainingPathUniqueSuffix, existingPrefixUniqueSuffix};
-  }
-
   protected splitLeg(
     leg: LegType | null, 
     remainingPath: bigint, 
@@ -161,7 +142,7 @@ export abstract class AbstractTree<
     }
     leg.markAsOutdated();
     const { commonPrefix, remainingPathUniqueSuffix, existingPrefixUniqueSuffix } = 
-        this.splitPrefix(remainingPath, leg.prefix);
+        splitPrefix(remainingPath, leg.prefix);
 
     if (commonPrefix === remainingPath) {
       throw new Error('Cannot add leaf inside the leg');
@@ -351,7 +332,7 @@ export abstract class AbstractLeg<LeafNodeType extends AbstractLeafNode<LeafNode
                            LegType extends AbstractLeg<LeafNodeType, InternalNodeType, LegType>>
 {
   private hashFunction: HashFunction;
-  public prefix: bigint;
+  private _prefix!: bigint;
   public child: LeafNodeType | InternalNodeType;
   protected outdated: boolean = true;
   private hash: WordArray | null = null;
@@ -360,6 +341,15 @@ export abstract class AbstractLeg<LeafNodeType extends AbstractLeafNode<LeafNode
     this.hashFunction = hashFunction;
     this.prefix = prefix;
     this.child = node;
+  }
+
+  public set prefix(newPrefix: bigint) {
+    validatePath(newPrefix);
+    this._prefix = newPrefix;
+  }
+
+  public get prefix(): bigint {
+    return this._prefix;
   }
 
   public getHash(): WordArray {
@@ -425,6 +415,7 @@ export abstract class AbstractPath {
     for (let i = this.path.length - 3; i >= 0; i--) {
       const pathItem = this.path[i + 1] as PathItemInternalNode;
       const prefix = pathItem.prefix;
+      validatePath(prefix);
       const legHash = context.hashLeg(prefix, h);
 
       if (getDirection(prefix) === LEFT) {
@@ -458,8 +449,6 @@ export abstract class AbstractPath {
     
     if (commonPathBits === requestPathBits) return false;
     if (commonPathBits === extractedLocationBits) {
-      // Since the leaf property doesn't exist in our IPathItem, we'll check for a value property instead,
-      // which would indicate this is a leaf node
       const lastItem = lastItemAsSupertype as PathItemLeaf;
       if (lastItem.value !== undefined) {
         return false;
@@ -477,8 +466,9 @@ export abstract class AbstractPath {
   public getLocation(): bigint {
     let result = 1n;
     for (let i = this.path.length - 1; i > 0; i--) {
-      if (!(this.path[i] as PathItemInternalNode).prefix) continue;
+      if (!('prefix' in this.path[i])) continue; 
       const bits = (this.path[i] as PathItemInternalNode).prefix;
+      validatePath(bits);
       const bitLength = bits.toString(2).length - 1;
       result = (result << BigInt(bitLength)) | (bits & ((1n << BigInt(bitLength)) - 1n));
     }
@@ -521,11 +511,12 @@ export abstract class AbstractPath {
 
   protected abstract createVerificationContext(hashFunction: HashFunction): VerificationContext;
 
-  private vertexAtDepth(depth: number): boolean {
+  public vertexAtDepth(depth: number): boolean {
     let result = 1n;
     for (let i = this.path.length - 1; i > 0 && (1n << BigInt(depth)) > result; i--) {
       if (!(this.path[i] as PathItemInternalNode).prefix) continue;
       const bits = (this.path[i] as PathItemInternalNode).prefix;
+      validatePath(bits);
       const bitLength = bits.toString(2).length - 1;
       result = (result << BigInt(bitLength)) | (bits & ((1n << BigInt(bitLength)) - 1n));
     }
@@ -606,6 +597,30 @@ function getDirection(path: bigint): bigint {
   return masked === RIGHT ? RIGHT : LEFT;
 }
 
+export function splitPrefix(remainingPath: bigint, existingPrefix: bigint): 
+    { commonPrefix: bigint; remainingPathUniqueSuffix: bigint; existingPrefixUniqueSuffix: bigint; } 
+{
+  validatePath(remainingPath);
+  validatePath(existingPrefix);
+  // Find the position where prefix and sequence differ
+  let mask = 1n;
+  const remainingPathLen = remainingPath.toString(2).length - 1;
+  const existingPrefixLen = existingPrefix.toString(2).length - 1;
+  const minLen =  Math.min(remainingPathLen, existingPrefixLen);
+
+  let firstDifferencePos = 0n;
+  while ((remainingPath & mask) === (existingPrefix & mask) && firstDifferencePos < minLen) {
+    firstDifferencePos++;
+    mask <<= 1n;
+  }
+
+  const commonPrefix = (remainingPath & ((1n << firstDifferencePos) - 1n)) | (1n << firstDifferencePos);
+  const remainingPathUniqueSuffix = remainingPath >> firstDifferencePos;
+  const existingPrefixUniqueSuffix = existingPrefix >> firstDifferencePos;
+
+  return {commonPrefix, remainingPathUniqueSuffix, existingPrefixUniqueSuffix};
+}
+
 export function getCommonPathBits(pathBits1: string, pathBits2: string): string {
   let i1 = pathBits1.length - 1;
   let i2 = pathBits2.length - 1;
@@ -615,4 +630,10 @@ export function getCommonPathBits(pathBits1: string, pathBits2: string): string 
     i2--;
   }
   return pathBits1.substring(i1 + 1);
+}
+
+export function validatePath(path: bigint) {
+  if (path <= 0n) {
+    throw new Error(`Invalid path or prefix: ${path}`);
+  }
 }
