@@ -476,19 +476,21 @@ export abstract class AbstractPath<
     const requestPathBits = requestPath.toString(2).substring(1);
     const extractedLocationBits = extractedLocation.toString(2).substring(1);
     const commonPathBits = getCommonPathBits(requestPathBits, extractedLocationBits);
-    
-    if (commonPathBits === requestPathBits) return false;
-    if (commonPathBits === extractedLocationBits) {
-      const lastItem = lastItemAsSupertype as unknown as PathItemLeafType;
-      if (lastItem.value !== undefined) {
+   
+    const allRequestedPathMatchesButTreePathGoesDeeper = requestPathBits != extractedLocationBits && 
+        commonPathBits === requestPathBits;
+    const allTreePathMatchesButRequestGoesDeeper = requestPathBits != extractedLocationBits && 
+        commonPathBits === extractedLocationBits;
+
+    if (allRequestedPathMatchesButTreePathGoesDeeper) {
+      return false;
+    }
+    if (allTreePathMatchesButRequestGoesDeeper) {
+      if (this.isLeaf(lastItemAsSupertype)) {
         return false;
       } else {
-        // TODO: According to the type system, this is impossible.
         throw new Error('Wrong path acquired for the requested path');
       }
-    }
-    if (this.vertexAtDepth(commonPathBits.length)) {
-      throw new Error('Wrong path acquired for the requested path');
     }
     return false;
   }
@@ -544,18 +546,6 @@ export abstract class AbstractPath<
   protected abstract getNodeHashFromInternalNodeHashed(pathItem: PathItemType): WordArray;
 
   protected abstract createVerificationContext(hashFunction: HashFunction): VerificationContext;
-
-  public vertexAtDepth(depth: number): boolean {
-    let result = 1n;
-    for (let i = this.path.length - 1; i > 0 && (1n << BigInt(depth)) > result; i--) {
-      if (!(this.path[i] as unknown as PathItemInternalNodeType).prefix) continue;
-      const bits = (this.path[i] as unknown as PathItemInternalNodeType).prefix;
-      validatePath(bits);
-      const bitLength = bits.toString(2).length - 1;
-      result = (result << BigInt(bitLength)) | (bits & ((1n << BigInt(bitLength)) - 1n));
-    }
-    return result.toString(2).length === depth;
-  }
 }
 
 export class Path extends AbstractPath<PathItem, PathItemRoot, PathItemInternalNode, PathItemEmptyBranch, PathItemLeaf> {

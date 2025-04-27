@@ -229,6 +229,15 @@ testConfigs.forEach((config) => {
                 checkValues(smt, leaves, (p) => p);
               });
             });
+
+            it('Wrong path acquired for the requested path', function() {
+              const path = smt.getProof(0b11111111111000n);
+
+              assert.throws(
+                () => {path.provesInclusionAt(0b11111100000000n)}, 
+                Error, 
+                /Wrong path acquired for the requested path/);
+            });  
           });
         }
       });
