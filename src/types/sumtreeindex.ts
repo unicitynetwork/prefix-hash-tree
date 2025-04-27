@@ -1,38 +1,40 @@
-import { Leaf, PathItem, WordArray } from './index.js';
+import { Leaf, PathItem, AbstractPathItemRoot, AbstractPathItemInternalNode, AbstractPathItemInternalNodeHashed, 
+  AbstractPathItemEmptyBranch, AbstractPathItemLeaf, WordArray } from './index.js';
 
 
 export interface SumLeaf extends Leaf {
   numericValue: bigint;
 }
 
-export interface SumPathItemRoot extends PathItem {
+
+export interface SumPathItemRoot extends AbstractPathItemRoot {
   type: 'sumRoot';
-  rootHash: WordArray;
   sum: bigint;
 }
 
-export interface SumPathItemInternalNode extends PathItem {
+export interface SumPathItemInternalNode extends AbstractPathItemInternalNode {
   type: 'sumInternalNode';
-  prefix: bigint;
-  siblingHash: WordArray | undefined;
   siblingSum: bigint | undefined;
 }
 
-export interface SumPathItemInternalNodeHashed extends PathItem {
+export interface SumPathItemInternalNodeHashed extends AbstractPathItemInternalNodeHashed {
   type: 'sumInternalNodeHashed';
-  nodeHash: WordArray;
   sum: bigint;
 }
 
-export interface SumPathItemEmptyBranch extends PathItem {
+export interface SumPathItemEmptyBranch extends AbstractPathItemEmptyBranch{
   type: 'sumEmptyBranch';
-  direction: bigint;
-  siblingHash: WordArray;
   siblingSum: bigint;
 }
 
-export interface SumPathItemLeaf extends PathItem {
+export interface SumPathItemLeaf extends AbstractPathItemLeaf {
   type: 'sumLeaf';
-  value: string | WordArray;
   numericValue: bigint;
 }
+
+export type SumPathItem = 
+    SumPathItemRoot |
+    SumPathItemInternalNode |
+    SumPathItemInternalNodeHashed | 
+    SumPathItemEmptyBranch |  
+    SumPathItemLeaf;

@@ -10,30 +10,25 @@ export interface Leaf {
 
 export interface PathItem {}
 
-export interface PathItemRoot extends PathItem {
-  type: 'root';
+export interface AbstractPathItemRoot extends PathItem {
   rootHash: WordArray;
 }
 
-export interface PathItemInternalNode extends PathItem {
-  type: 'internalNode';
+export interface AbstractPathItemInternalNode extends PathItem {
   prefix: bigint;
   siblingHash: WordArray | undefined;
 }
 
-export interface PathItemInternalNodeHashed extends PathItem {
-  type: 'internalNodeHashed';
+export interface AbstractPathItemInternalNodeHashed extends PathItem {
   nodeHash: WordArray;
 }
 
-export interface PathItemEmptyBranch extends PathItem {
-  type: 'emptyBranch';
+export interface AbstractPathItemEmptyBranch extends PathItem {
   direction: bigint;
   siblingHash: WordArray;
 }
 
-export interface PathItemLeaf extends PathItem {
-  type: 'leaf';
+export interface AbstractPathItemLeaf extends PathItem {
   value: string | WordArray;
 }
 
@@ -41,4 +36,24 @@ export interface PrefixSplit extends PathItem {
   prefix: bigint;
   pathSuffix: bigint;
   legSuffix: bigint;
+}
+
+export interface PathItemRoot extends AbstractPathItemRoot {
+  type: 'root';
+}
+
+export interface PathItemInternalNode extends AbstractPathItemInternalNode {
+  type: 'internalNode';
+}
+
+export interface PathItemInternalNodeHashed extends AbstractPathItemInternalNodeHashed  {
+  type: 'internalNodeHashed';
+}
+
+export interface PathItemEmptyBranch extends AbstractPathItemEmptyBranch {
+  type: 'emptyBranch';
+}
+
+export interface PathItemLeaf extends AbstractPathItemLeaf {
+  type: 'leaf';
 }

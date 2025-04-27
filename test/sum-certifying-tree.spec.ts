@@ -5,6 +5,7 @@ import { smthash, wordArrayToHex } from '@unicitylabs/utils';
 import { SumLeaf, SumTree } from '../src/index.js';
 
 import CryptoJS from 'crypto-js';
+import { ValidationResult } from '../src/smt.js';
 
 describe('Sum-Certifying Tree', function() {
   it('should build a tree with numeric values and compute correct sums', function() {
@@ -84,5 +85,37 @@ describe('Sum-Certifying Tree', function() {
     assert.equal(path2.getLeafNumericValue(), 20n);
     assert.equal(path3.getLeafNumericValue(), 30n);
     assert.equal(path4.getLeafNumericValue(), 40n);
+  });
+});
+
+describe('SumPath Validation', function() {
+  describe('allNumericValuesOnPathArePositiveOrZero', function() {
+    let treeWithNegativeValue: SumTree;
+    const positivePath = 0b10n;
+    const negativePath = 0b11n;
+
+    beforeEach(function() {
+      const leaves: Map<bigint, SumLeaf> = new Map([
+        [positivePath, { value: smthash('positive-leaf'), numericValue: 100n }],
+        [negativePath, { value: smthash('negative-leaf'), numericValue: -50n }]
+      ]);
+      treeWithNegativeValue = new SumTree(smthash, leaves);
+
+      assert.equal(treeWithNegativeValue.getRootSum(), 50n);
+    });
+
+    it('should fail verification for the path of the leaf with a negative numericValue', function() {
+      const verificationResult: ValidationResult = treeWithNegativeValue.getProof(negativePath).verifyPath();
+
+      assert.isFalse(verificationResult.success);
+      assert.strictEqual(verificationResult.error, 'Negative numeric values are not allowed on any part of the path', 'Incorrect error message');
+    });
+
+    it('should fail verification for the path of a positive leaf if its sibling has a negative sum', function() {
+      const verificationResult: ValidationResult = treeWithNegativeValue.getProof(positivePath).verifyPath();
+
+      assert.isFalse(verificationResult.success);
+      assert.strictEqual(verificationResult.error, 'Negative numeric values are not allowed on any part of the path', 'Incorrect error message');
+    });
   });
 });
