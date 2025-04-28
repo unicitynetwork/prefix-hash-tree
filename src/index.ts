@@ -1,5 +1,5 @@
 import { hash } from './helper.js';
-import { SMT, AbstractTree, Path, getCommonPathBits, splitPrefix } from './smt.js';
+import { SMT, AbstractTree, Path, getCommonPathBits, padAndValidatePath, unpad, splitPrefix } from './smt.js';
 import { SumPath } from './sumtree.js';
 import { SumTree } from './sumtree.js';
 import { HashFunction, Leaf, PathItem, WordArray, PrefixSplit } from './types/index.js';
@@ -14,6 +14,8 @@ export {
   SumPath,
   getCommonPathBits,
   splitPrefix,
+  padAndValidatePath,
+  unpad,
   // Types
   HashFunction,
   Leaf,

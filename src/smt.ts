@@ -27,23 +27,32 @@ export abstract class AbstractTree<
       PathItemEmptyBranchType extends AbstractPathItemEmptyBranch,
       PathType extends AbstractPath<PathItemType, PathItemRootType, PathItemInternalNodeType, PathItemEmptyBranchType, PathItemLeafType>> 
 {
-
-    
-
-  protected hashFunction: HashFunction;
+  protected readonly hashFunction: HashFunction;
   protected root: InternalNodeType;
+  protected readonly pathPaddingBits: bigint | false;
 
-  public constructor(hashFunction: HashFunction, leavesByPath: Map<bigint, LeafType>) {
+  /**
+   * By default, paths are internally padded to 256 bits by performing a bitwise OR operation
+   * with 2^256. This ensures consistent path lengths internally. The tree path 
+   * length compression efficiency is unaffected by this. The padding is automatically handled 
+   * and is removed by methods like `getLocation()`.
+   * 
+   * @param {number | false | undefined} pathPaddingBits - Specifies the target bit length 
+   * for padding (e.g., 256). Provide a positive integer to set a custom length.
+   * Set to `false` disable path padding entirely. Defaults to 256 if `undefined`.
+   */
+  public constructor(hashFunction: HashFunction, leavesByPath: Map<bigint, LeafType>, pathPaddingBits: bigint | false = 256n) {
     this.hashFunction = hashFunction;
+    this.pathPaddingBits = pathPaddingBits;
     this.root = this.buildTree(leavesByPath);
   }
 
   public getProof(requestPath: bigint): PathType {
-    validatePath(requestPath);
+    const path = this.padAndValidatePath(requestPath);
     if (this.isEmpty()) {
       return this.createPathForEmptyTree();
     }
-    const pathItems = this.searchPath(this.root, requestPath);
+    const pathItems = this.searchPath(this.root, path);
     pathItems.unshift(this.createPathItemRoot());
     return this.createPath(pathItems);
   }
@@ -53,8 +62,8 @@ export abstract class AbstractTree<
   }
 
   public addLeaf(requestPath: bigint, leaf: LeafType): void {
-    validatePath(requestPath);
-    this.traverse(this.root, requestPath, leaf);
+    const path = this.padAndValidatePath(requestPath);
+    this.traverse(this.root, path, leaf);
   }
 
   public getRootHash(): WordArray {
@@ -64,8 +73,8 @@ export abstract class AbstractTree<
   protected buildTree(leavesByPath: Map<bigint, LeafType>): InternalNodeType {
     const root = this.createInternalNode();
 
-    for (const [path, leaf] of leavesByPath) {
-      validatePath(path);
+    for (const [pathWithoutPadding, leaf] of leavesByPath) {
+      const path = this.padAndValidatePath(pathWithoutPadding);
       this.traverse(root, path, leaf);
     }
     return root;
@@ -151,10 +160,19 @@ export abstract class AbstractTree<
         splitPrefix(remainingPath, leg.prefix);
 
     if (commonPrefix === remainingPath) {
+      // This means either:
+      // 
+      // 1. An attempt to change an existing value, which is not supported.
+      //  
+      // 2. The new path would be in the middle of the prefix/path of an exisiting leg.
+      // In this tree, only leaf nodes contain values, so this is not allowed.
+      // More generally, every tree path must have only one value node (the leaf node).
       throw new Error('Cannot add leaf inside the leg');
     }
     if (commonPrefix === leg.prefix) {
       if (leg.child.isLeaf()) {
+        // Here the path of the existing leaf would be in the middle of the new path.
+        // In this tree, every tree path can contain only one value node, thus this is not allowed.
         throw new Error('Cannot extend the leg through the leaf');
       }
       this.traverse(leg.child, remainingPathUniqueSuffix, leaf);
@@ -172,6 +190,10 @@ export abstract class AbstractTree<
     }
     this.traverse(junction, remainingPathUniqueSuffix, leaf);
     return leg;
+  }
+
+  protected padAndValidatePath(path: bigint): bigint {
+    return padAndValidatePath(path, this.pathPaddingBits);
   }
 
   protected abstract createPath(pathItems: PathItem[]): PathType;
@@ -207,11 +229,12 @@ export class SMT extends AbstractTree<InternalNode, LeafNode, Leaf, Leg, PathIte
   protected createPathForEmptyTree(): Path {
     return new Path (
       [{type: 'root', rootHash: this.getRootHash()} as PathItemRoot],
-      this.hashFunction);
+      this.hashFunction,
+      this.pathPaddingBits);
   }
 
   protected createPath(pathItems: PathItem[]): Path {
-    return new Path(pathItems, this.hashFunction);
+    return new Path(pathItems, this.hashFunction, this.pathPaddingBits);
   }
 
   protected createInternalNode(): InternalNode {
@@ -350,7 +373,7 @@ export abstract class AbstractLeg<LeafNodeType extends AbstractLeafNode<LeafNode
   }
 
   public set prefix(newPrefix: bigint) {
-    validatePath(newPrefix);
+    validatePrefix(newPrefix);
     this._prefix = newPrefix;
   }
 
@@ -389,10 +412,12 @@ export abstract class AbstractPath<
 {
   protected readonly path: PathItemType[];
   protected readonly hashFunction: HashFunction;
+  protected readonly pathPaddingBits: bigint | false;
 
-  constructor(items: PathItemType[], hashFunction: HashFunction) {
+  constructor(items: PathItemType[], hashFunction: HashFunction, pathPaddingBits: bigint | false) {
     this.path = items;
     this.hashFunction = hashFunction;
+    this.pathPaddingBits = pathPaddingBits;
   }
 
   public verifyPath(): ValidationResult {
@@ -430,7 +455,7 @@ export abstract class AbstractPath<
     for (let i = this.path.length - 3; i >= 0; i--) {
       const pathItem = this.path[i + 1] as unknown as PathItemInternalNodeType;
       const prefix = pathItem.prefix;
-      validatePath(prefix);
+      validatePrefix(prefix);
       const legHash = context.hashLeg(prefix, h);
 
       if (getDirection(prefix) === LEFT) {
@@ -459,9 +484,10 @@ export abstract class AbstractPath<
   }
 
   public provesInclusionAt(requestPath: bigint): boolean {
+    const paddedRequestPath = padAndValidatePath(requestPath, this.pathPaddingBits);
     const pathValidationResult = this.verifyPath();
     if (!pathValidationResult.success) {
-      throw new Error(`Path integrity check error for path ${requestPath}: ${pathValidationResult.error}`);
+      throw new Error(`Path integrity check error for path ${paddedRequestPath}: ${pathValidationResult.error}`);
     }
     if (this.isEmptyTree()) {
       return false;
@@ -470,10 +496,12 @@ export abstract class AbstractPath<
     if (this.isEmptyBranch(lastItemAsSupertype)) {
       return false;
     }
-    const extractedLocation = this.getLocation();
-    if (requestPath === extractedLocation) return true;
+    const extractedLocation = this.getPaddedLocation();
+    if (paddedRequestPath === extractedLocation) {
+      return true;
+    }
     
-    const requestPathBits = requestPath.toString(2).substring(1);
+    const requestPathBits = paddedRequestPath.toString(2).substring(1);
     const extractedLocationBits = extractedLocation.toString(2).substring(1);
     const commonPathBits = getCommonPathBits(requestPathBits, extractedLocationBits);
    
@@ -484,8 +512,7 @@ export abstract class AbstractPath<
 
     if (allRequestedPathMatchesButTreePathGoesDeeper) {
       return false;
-    }
-    if (allTreePathMatchesButRequestGoesDeeper) {
+    } else if (allTreePathMatchesButRequestGoesDeeper) {
       if (this.isLeaf(lastItemAsSupertype)) {
         return false;
       } else {
@@ -496,11 +523,15 @@ export abstract class AbstractPath<
   }
 
   public getLocation(): bigint {
+    return unpad(this.getPaddedLocation(), this.pathPaddingBits);
+  }
+
+  public getPaddedLocation(): bigint {
     let result = 1n;
     for (let i = this.path.length - 1; i > 0; i--) {
       if (!('prefix' in this.path[i])) continue; 
       const bits = (this.path[i] as unknown as PathItemInternalNodeType).prefix;
-      validatePath(bits);
+      validatePrefix(bits);
       const bitLength = bits.toString(2).length - 1;
       result = (result << BigInt(bitLength)) | (bits & ((1n << BigInt(bitLength)) - 1n));
     }
@@ -628,8 +659,8 @@ function getDirection(path: bigint): bigint {
 export function splitPrefix(remainingPath: bigint, existingPrefix: bigint): 
     { commonPrefix: bigint; remainingPathUniqueSuffix: bigint; existingPrefixUniqueSuffix: bigint; } 
 {
-  validatePath(remainingPath);
-  validatePath(existingPrefix);
+  validatePrefix(remainingPath);
+  validatePrefix(existingPrefix);
   // Find the position where prefix and sequence differ
   let mask = 1n;
   const remainingPathLen = remainingPath.toString(2).length - 1;
@@ -660,8 +691,29 @@ export function getCommonPathBits(pathBits1: string, pathBits2: string): string 
   return pathBits1.substring(i1 + 1);
 }
 
-export function validatePath(path: bigint) {
-  if (path <= 0n) {
-    throw new Error(`Invalid path or prefix: ${path}`);
+export function validatePrefix(prefix: bigint) {
+  if (prefix <= 0n) {
+    throw new Error(`Invalid prefix: ${prefix}`);
   }
+}
+
+export function padAndValidatePath(path: bigint, pathLengthBits: bigint | false): bigint {
+  if (path < 0n) {
+    throw new Error(`Invalid path: ${path}`);
+  } 
+  if (!pathLengthBits) {
+    return path;
+  }
+  
+  if (path >= (1n << (pathLengthBits + 1n))) {
+    throw new Error(`Path too long for given bit length: 0b${path.toString(2)} is longer than ${pathLengthBits} + 1 bits`);
+  }
+  return path | (1n << pathLengthBits);
+}
+
+export function unpad(path: bigint, pathLengthBits: bigint | false): bigint {
+  if (!pathLengthBits) {
+    return path;
+  }
+  return path & ((1n << pathLengthBits) - 1n);
 }

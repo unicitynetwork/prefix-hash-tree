@@ -13,8 +13,8 @@ export class SumTree extends AbstractTree<SumInternalNode, SumLeafNode, SumLeaf,
     SumPathItemInternalNode, SumPathItemInternalNodeHashed, SumPathItemLeaf, SumPathItemEmptyBranch, 
     SumPath> 
 {
-  public constructor(hashFunction: HashFunction, leavesByPath: Map<bigint, SumLeaf>) {
-    super(hashFunction, leavesByPath);
+  public constructor(hashFunction: HashFunction, leavesByPath: Map<bigint, SumLeaf>, pathLengthInBits: bigint | false | undefined = undefined) {
+    super(hashFunction, leavesByPath, pathLengthInBits);
   }
 
   public getRootSum(): bigint {
@@ -22,13 +22,14 @@ export class SumTree extends AbstractTree<SumInternalNode, SumLeafNode, SumLeaf,
   }
   
   override createPath(pathItems: SumPathItem[]): SumPath {
-    return new SumPath(pathItems, this.hashFunction);
+    return new SumPath(pathItems, this.hashFunction, this.pathPaddingBits);
   }
 
   override createPathForEmptyTree(): SumPath {
     return new SumPath(
       [{ type: 'sumRoot', rootHash: this.getRootHash(), sum: 0n } as SumPathItemRoot],
-      this.hashFunction);
+      this.hashFunction,
+      this.pathPaddingBits);
   }
 
   override createNewLeaf(leaf: SumLeaf): SumLeafNode {

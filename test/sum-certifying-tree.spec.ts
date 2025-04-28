@@ -15,7 +15,7 @@ describe('Sum-Certifying Tree', function() {
       [ 0b101000000n, { value: wordArrayToHex(smthash('value-3')), numericValue: 300n } ]
     ]);
     
-    const tree = new SumTree(smthash, leaves);
+    const tree = new SumTree(smthash, leaves, 8n);
     
     assert.equal(tree.getRootSum(), 600n);
     
@@ -34,7 +34,7 @@ describe('Sum-Certifying Tree', function() {
       [ 0b100010000n, { value: wordArrayToHex(smthash('value-2')), numericValue: 200n } ]
     ]);
     
-    const tree = new SumTree(smthash, leaves);
+    const tree = new SumTree(smthash, leaves, 8n);
     
     // Initial sum should be 100 + 200 = 300
     assert.equal(tree.getRootSum(), 300n);
@@ -57,7 +57,7 @@ describe('Sum-Certifying Tree', function() {
       [ 0b1011n, { value: wordArrayToHex(smthash('right-2')), numericValue: 40n } ]
     ]);
     
-    const tree = new SumTree(smthash, leaves);
+    const tree = new SumTree(smthash, leaves, 3n);
     
     assert.equal(tree.getRootSum(), 100n);
     
@@ -99,7 +99,7 @@ describe('SumPath Validation', function() {
         [positivePath, { value: smthash('positive-leaf'), numericValue: 100n }],
         [negativePath, { value: smthash('negative-leaf'), numericValue: -50n }]
       ]);
-      treeWithNegativeValue = new SumTree(smthash, leaves);
+      treeWithNegativeValue = new SumTree(smthash, leaves, 1n);
 
       assert.equal(treeWithNegativeValue.getRootSum(), 50n);
     });

@@ -10,7 +10,7 @@ const testConfigs = [
   {
     name: 'SMT routines',
     isSumTree: false,
-    createTree: (leaves: Map<bigint, Leaf>) => new SMT(smthash, leaves),
+    createTree: (leaves: Map<bigint, Leaf>) => new SMT(smthash, leaves, false),
   },
   {
     name: 'Sum tree routines',
@@ -19,7 +19,8 @@ const testConfigs = [
         smthash, 
         new Map(Array.from(leaves).map(([path, leaf]) => (
           [ path, {...leaf, numericValue: path + 99n} ]
-        )))),
+        ))),
+        false),
   }
 ];
 

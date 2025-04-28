@@ -2,7 +2,7 @@
 import { assert } from 'chai';
 import { smthash, wordArrayToHex } from '@unicitylabs/utils';
 
-import { Leaf, SMT, SumTree, AbstractTree, WordArray, getCommonPathBits, splitPrefix, Path } from '../src/index.js';
+import { Leaf, SMT, SumTree, WordArray, getCommonPathBits, splitPrefix, padAndValidatePath, unpad, Path } from '../src/index.js';
 
 type Tree = SMT | SumTree;
 
@@ -78,7 +78,7 @@ const testConfigs = [
   {
     name: 'SMT routines',
     isSumTree: false,
-    createTree: (leaves: Map<bigint, Leaf>) => new SMT(smthash, leaves),
+    createTree: (leaves: Map<bigint, Leaf>) => new SMT(smthash, leaves, false),
   },
   {
     name: 'Sum tree routines',
@@ -87,7 +87,9 @@ const testConfigs = [
         smthash, 
         new Map(Array.from(leaves).map(([path, leaf]) => (
           [ path, {...leaf, numericValue: path + 99n} ]
-        )))),
+        ))),
+        false
+        ),
   }
 ];
 
@@ -123,7 +125,7 @@ testConfigs.forEach((config) => {
         });
 
         context('extracting proofs', function() {
-          it('extracting all inclusion proofs', function() { // TODO: Fix this test.
+          it('extracting all inclusion proofs', function() {
             checkPaths(
               smt, 
               leaves, 
@@ -276,9 +278,9 @@ describe('Utility functions', function() {
   });
 
   it('splitPrefix', function() {
-    assert.throws(() => {splitPrefix(0b0n, 0b0n)}, Error, /Invalid path or prefix: 0/);
-    assert.throws(() => {splitPrefix(0b1n, 0b0n)}, Error, /Invalid path or prefix: 0/);
-    assert.throws(() => {splitPrefix(0b0n, 0b1n)}, Error, /Invalid path or prefix: 0/);
+    assert.throws(() => {splitPrefix(0b0n, 0b0n)}, Error, /Invalid prefix: 0/);
+    assert.throws(() => {splitPrefix(0b1n, 0b0n)}, Error, /Invalid prefix: 0/);
+    assert.throws(() => {splitPrefix(0b0n, 0b1n)}, Error, /Invalid prefix: 0/);
 
     // Equal paths
     assert.deepStrictEqual(
@@ -315,7 +317,7 @@ describe('Utility functions', function() {
     assert.equal(
       new Path([
         {type: 'root', rootHash: 9}
-      ], smthash).getLocation(), 
+      ], smthash, false).getPaddedLocation(), 
       0b1n);
 
     assert.throws(
@@ -324,10 +326,10 @@ describe('Utility functions', function() {
           {type: 'root', rootHash: 9},
           {type: 'internalNode', prefix: 0b0n, siblingHash: 9},
           {type: 'leaf', value: 'v'}
-        ], smthash).getLocation()
+        ], smthash, false).getPaddedLocation()
       }, 
       Error, 
-      /Invalid path or prefix: 0/);
+      /Invalid prefix: 0/);
 
     // An edge on the left
     assert.equal(
@@ -335,7 +337,7 @@ describe('Utility functions', function() {
         {type: 'root', rootHash: 9},
         {type: 'internalNode', prefix: 0b10n, siblingHash: 9},
         {type: 'leaf', value: 'v'}
-      ], smthash).getLocation(), 
+      ], smthash, false).getPaddedLocation(), 
       0b10n);
 
     // A edge on the left with a longer prefix 
@@ -344,7 +346,7 @@ describe('Utility functions', function() {
         {type: 'root', rootHash: 9},
         {type: 'internalNode', prefix: 0b1110n, siblingHash: 9},
         {type: 'leaf', value: 'v'}
-      ], smthash).getLocation(), 
+      ], smthash, false).getPaddedLocation(), 
       0b1110n);
 
     // Several nodes on the path
@@ -357,7 +359,59 @@ describe('Utility functions', function() {
         {type: 'internalNode', prefix: 0b1_0111n, siblingHash: 9},
         {type: 'internalNode', prefix: 0b1_0n, siblingHash: 9},
         {type: 'leaf', value: 'v'}
-      ], smthash).getLocation(), 
+      ], smthash, false).getPaddedLocation(), 
       0b1_0_0111_01_0_0n);
+  });
+
+  it('padAndValidatePath', function() {
+    // Highest bit is set by the function.
+    assert.equal(padAndValidatePath(0b0n, 1n), 0b10n);
+    assert.equal(padAndValidatePath(0b1n, 1n), 0b11n);
+
+    // User already sets the highest bit.
+    assert.equal(padAndValidatePath(0b10n, 1n), 0b10n);
+    assert.equal(padAndValidatePath(0b11n, 1n), 0b11n);
+
+    // Larger bit length.
+    assert.equal(padAndValidatePath(0b0n, 3n),   0b1000n);
+    assert.equal(padAndValidatePath(0b110n, 3n), 0b1110n);
+
+    // Realistically large bit length.
+    assert.equal(
+      padAndValidatePath(0x50c496ca24078e75b149f02109e8ddfc3867fecd6b520d3b5a803b62580bd36dn, 256n),
+                        0x150c496ca24078e75b149f02109e8ddfc3867fecd6b520d3b5a803b62580bd36dn);
+
+    // Negative paths are not allowed
+    assert.throws(
+      () => { padAndValidatePath(-1n, 3n) }, 
+      Error, 
+      /Invalid path: -1/);
+
+    // Paths longer than bit length are not allowed
+    assert.throws(
+      () => { padAndValidatePath(0b100n, 1n) }, 
+      Error, 
+      /Path too long for given bit length: 0b100 is longer than 1 \+ 1 bits/);
+
+    // Padding can be turned off.
+    assert.equal(padAndValidatePath(0b0n, false), 0b0n);
+    assert.equal(padAndValidatePath(0b1n, false), 0b1n);
+
+    // Negative paths are still not allowed even with padding turned off
+    assert.throws(
+      () => { padAndValidatePath(-1n, false) }, 
+      Error, 
+      /Invalid path: -1/);
+  });
+
+  it('unpad', function() {
+    // No padding
+    assert.equal(unpad(0b0n, false), 0b0n);
+    assert.equal(unpad(0b1n, false), 0b1n);
+    assert.equal(unpad(0b0101n, false), 0b101n);
+
+    // Padding
+    assert.equal(unpad(0b11n, 1n), 0b1n);
+    assert.equal(unpad(0b1010101n, 6n), 0b10101n);
   });
 });
