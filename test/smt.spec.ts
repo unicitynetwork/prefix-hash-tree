@@ -3,6 +3,9 @@ import { assert } from 'chai';
 import { smthash, wordArrayToHex } from '@unicitylabs/utils';
 
 import { Leaf, SMT, SumTree, WordArray, getCommonPathBits, splitPrefix, padAndValidatePath, unpad, Path } from '../src/index.js';
+import { padTo32Bytes } from '../src/smt.js';
+
+import CryptoJS from 'crypto-js';
 
 type Tree = SMT | SumTree;
 
@@ -119,8 +122,8 @@ testConfigs.forEach((config) => {
             assert.equal(
               smt.getRootHash().toString(), 
               config.isSumTree ? 
-                  'f30b5cfdcc126f1405d61fbe8de09d49810291f2e1ae8d44e8a6a3689221ee9c':
-                  '220f4310e01a338279c83efc9b54cdc55cc6c6a3e49bda43de6173baaeb1aa6b');
+                  '5cb6ea7b93485de6870262adde5c8a0b8814e0c2a46310814b4128c1fa562d96':
+                  'e962897140998666f5dc1280d0d5fea1d8f858955801bd94b404d6b81cbf39a2');
           });
         });
 
@@ -245,6 +248,28 @@ testConfigs.forEach((config) => {
       });
     }
   });
+
+  function testTreeWithSingleLeaf(longPath: bigint) {
+    const tree = config.createTree(
+      new Map<bigint, Leaf>([
+        [longPath, { value: wordArrayToHex(smthash('value00000000')) }],
+      ]));
+    assert.isTrue((tree.getProof(longPath)).provesInclusionAt(longPath));
+    return tree;
+  }
+
+  describe('Hash function padding', function() {
+    it('should handle a single node with a long prefix', function() {
+      testTreeWithSingleLeaf(0xdf75dba2b13db9a7554e2f7d9a967feec9b2998cfe08e730a56cf3fc2088b870n);
+      const tree = testTreeWithSingleLeaf(0xdf75dba2b13db9a7554e2f7d9a967feec9b2998cfe08e730a56cf3fc2088b87fn);
+
+      assert.equal(
+          tree.getRootHash().toString(CryptoJS.enc.Hex), 
+          tree instanceof SMT ?
+            '178ab5191e4ccd2425448eb06aac88c0c5c5085703fefe119ccb33e5ff906a25':
+            'f4a2933b49c37f3518a08df55356da83fdf312f094c513e67726f91896e2d707');
+    });
+  });
 });
 
 class MyNode {
@@ -258,7 +283,6 @@ class MyNode {
     this.hash = hash;
   }
 }
-
 
 describe('Utility functions', function() {
   it('getCommonPathBits', function() {
@@ -414,4 +438,53 @@ describe('Utility functions', function() {
     assert.equal(unpad(0b11n, 1n), 0b1n);
     assert.equal(unpad(0b1010101n, 6n), 0b10101n);
   });
+
+  it('padTo32Bytes', function() {
+    // BigInt input
+    assert.equal(padTo32Bytes(0x0n).toString(CryptoJS.enc.Hex),  
+        '0000000000000000000000000000000000000000000000000000000000000000');
+    assert.equal(padTo32Bytes(0x1n).toString(CryptoJS.enc.Hex),  
+        '0000000000000000000000000000000000000000000000000000000000000001');
+    assert.equal(padTo32Bytes(0x10n).toString(CryptoJS.enc.Hex), 
+        '0000000000000000000000000000000000000000000000000000000000000010');
+    assert.equal(padTo32Bytes(0x123456789ABCDEFn).toString(CryptoJS.enc.Hex), 
+        '0000000000000000000000000000000000000000000000000123456789abcdef');
+    assert.equal(padTo32Bytes(0xdf75dba2b13db9a7554e2f7d9a967feec9b2998cfe08e730a56cf3fc2088b87fn).toString(CryptoJS.enc.Hex), 
+        'df75dba2b13db9a7554e2f7d9a967feec9b2998cfe08e730a56cf3fc2088b87f');
+
+    // WordArray input
+    assert.equal(padTo32Bytes(CryptoJS.enc.Hex.parse('00')).toString(CryptoJS.enc.Hex), 
+        '0000000000000000000000000000000000000000000000000000000000000000');
+    assert.equal(padTo32Bytes(CryptoJS.enc.Hex.parse('01')).toString(CryptoJS.enc.Hex), 
+        '0000000000000000000000000000000000000000000000000000000000000001');
+    assert.equal(padTo32Bytes(CryptoJS.enc.Hex.parse('10')).toString(CryptoJS.enc.Hex), 
+        '0000000000000000000000000000000000000000000000000000000000000010');
+    assert.equal(padTo32Bytes(CryptoJS.enc.Hex.parse('df75dba2b13db9a7554e2f7d9a967feec9b2998cfe08e730a56cf3fc2088b87f')).toString(CryptoJS.enc.Hex), 
+        'df75dba2b13db9a7554e2f7d9a967feec9b2998cfe08e730a56cf3fc2088b87f');
+
+    // Too long -- bigint
+    assert.throws(
+      () => { padTo32Bytes(0xfdf75dba2b13db9a7554e2f7d9a967feec9b2998cfe08e730a56cf3fc2088b87fn) },
+      Error,
+      /Input value too long/
+    );
+    assert.throws(
+      () => { padTo32Bytes(0xffdf75dba2b13db9a7554e2f7d9a967feec9b2998cfe08e730a56cf3fc2088b87fn) },
+      Error,
+      /Input value too long/
+    );
+
+    // Too long -- WordArray
+    assert.throws(
+      () => { padTo32Bytes(CryptoJS.enc.Hex.parse('fdf75dba2b13db9a7554e2f7d9a967feec9b2998cfe08e730a56cf3fc2088b87f')) },
+      Error,
+      /Input value too long/
+    );
+    assert.throws(
+      () => { padTo32Bytes(CryptoJS.enc.Hex.parse('ffdf75dba2b13db9a7554e2f7d9a967feec9b2998cfe08e730a56cf3fc2088b87f')) },
+      Error,
+      /Input value too long/
+    );
+  });
 });
+

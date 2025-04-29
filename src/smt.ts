@@ -7,6 +7,8 @@ import { HashFunction, Leaf, PathItem, PathItemRoot, PathItemInternalNode,
   AbstractPathItemInternalNodeHashed, AbstractPathItemEmptyBranch, AbstractPathItemLeaf,
   WordArray } from './types/index.js';
 
+import CryptoJS from 'crypto-js';
+
 export const LEFT: bigint = 0n;
 export const RIGHT: bigint = 1n;
 
@@ -283,7 +285,8 @@ export class SMT extends AbstractTree<InternalNode, LeafNode, Leaf, Leg, PathIte
     return new Leg(
       this.hashFunction,
       remainingPath,
-      child);
+      child,
+      this.pathPaddingBits);
   }
 } 
 
@@ -326,7 +329,9 @@ export abstract class AbstractLeafNode<LeafNodeType extends AbstractLeafNode<Lea
   }
 
   override getHash(): WordArray {
-    return this.hashFunction(LEAF_PREFIX, this.value);
+    return this.hashFunction(
+      padTo32Bytes(LEAF_PREFIX), 
+      typeof(this.value) == 'string' ? CryptoJS.enc.Utf8.parse(this.value) : padTo32Bytes(this.value));
   }
 }
 
@@ -346,10 +351,10 @@ export abstract class AbstractInternalNode<LeafNodeType extends AbstractLeafNode
   }
 
   override getHash(): WordArray {
-    const leftHash = this.left ? this.left.getHash() : null;
-    const rightHash = this.right ? this.right.getHash() : null;
+    const leftHash = this.left ? this.left.getHash() : 0n;
+    const rightHash = this.right ? this.right.getHash() : 0n;
 
-    return this.hashFunction(NODE_PREFIX, leftHash, rightHash);
+    return this.hashFunction(padTo32Bytes(NODE_PREFIX), padTo32Bytes(leftHash), padTo32Bytes(rightHash));
   }
 }
 
@@ -365,11 +370,13 @@ export abstract class AbstractLeg<LeafNodeType extends AbstractLeafNode<LeafNode
   public child: LeafNodeType | InternalNodeType;
   protected outdated: boolean = true;
   private hash: WordArray | null = null;
+  protected readonly pathPaddingBits: bigint | false;
 
-  public constructor(hashFunction: HashFunction, prefix: bigint, node: LeafNodeType | InternalNodeType) {
+  public constructor(hashFunction: HashFunction, prefix: bigint, node: LeafNodeType | InternalNodeType, pathPaddingBits: bigint | false) {
     this.hashFunction = hashFunction;
     this.prefix = prefix;
     this.child = node;
+    this.pathPaddingBits = pathPaddingBits;
   }
 
   public set prefix(newPrefix: bigint) {
@@ -388,7 +395,10 @@ export abstract class AbstractLeg<LeafNodeType extends AbstractLeafNode<LeafNode
   
   protected recalculateIfOutdated() {
     if (this.outdated) {
-      this.hash = this.hashFunction(LEG_PREFIX, this.prefix, this.child.getHash());
+      this.hash = this.hashFunction(
+        padTo32Bytes(LEG_PREFIX), 
+        padTo32Bytes(unpad(this.prefix, this.pathPaddingBits)), 
+        padTo32Bytes(this.child.getHash()));
       this.outdated = false;
     }
   }
@@ -597,6 +607,7 @@ export class Path extends AbstractPath<PathItem, PathItemRoot, PathItemInternalN
   }
 
   protected createVerificationContext(hashFunction: HashFunction): VerificationContext {
+    const pathPaddingBits = this.pathPaddingBits;
     return {
       beginCalculation(pathItem: PathItem): void {
       },
@@ -605,36 +616,42 @@ export class Path extends AbstractPath<PathItem, PathItemRoot, PathItemInternalN
       hashLeftNode(pathItemAsSupertype: PathItem, legHash: WordArray): WordArray {
         const pathItem = pathItemAsSupertype as PathItemInternalNode;
         return hashFunction(
-          NODE_PREFIX, 
-          legHash, 
-          pathItem.siblingHash ? pathItem.siblingHash : null); 
+          padTo32Bytes(NODE_PREFIX), 
+          padTo32Bytes(legHash), 
+          padTo32Bytes(pathItem.siblingHash ? pathItem.siblingHash : 0n)); 
       },
       hashRightNode(pathItemAsSupertype: PathItem, legHash: WordArray): WordArray {
         const pathItem = pathItemAsSupertype as PathItemInternalNode;
         return hashFunction(
-          NODE_PREFIX, 
-          pathItem.siblingHash ? pathItem.siblingHash : null, 
-          legHash);
+          padTo32Bytes(NODE_PREFIX), 
+          padTo32Bytes(pathItem.siblingHash ? pathItem.siblingHash : 0n), 
+          padTo32Bytes(legHash));
       },
       hashLeftEmptyBranch(pathItemAsSupertype: PathItem) {
         const pathItem = pathItemAsSupertype as PathItemEmptyBranch;
         return hashFunction(
-          NODE_PREFIX, 
-          null, 
-          pathItem.siblingHash);
+          padTo32Bytes(NODE_PREFIX), 
+          padTo32Bytes(0n), 
+          padTo32Bytes(pathItem.siblingHash));
       },
       hashRightEmptyBranch(pathItemAsSupertype: PathItem) {
         const pathItem = pathItemAsSupertype as PathItemEmptyBranch;
         return hashFunction(
-          NODE_PREFIX, 
-          pathItem.siblingHash, 
-          null);
+          padTo32Bytes(NODE_PREFIX), 
+          padTo32Bytes(pathItem.siblingHash), 
+          padTo32Bytes(0n));
       },
       hashLeaf(pathItem: PathItem): WordArray {
-        return hashFunction(LEAF_PREFIX, (pathItem as PathItemLeaf).value);
+        const leaf = pathItem as PathItemLeaf;
+        return hashFunction(
+          padTo32Bytes(LEAF_PREFIX), 
+          typeof(leaf.value) == 'string' ? CryptoJS.enc.Utf8.parse(leaf.value) : padTo32Bytes(leaf.value));
       },
       hashLeg (prefix: bigint, childHash: WordArray): WordArray {
-        return hashFunction(LEG_PREFIX, prefix, childHash);
+        return hashFunction(
+            padTo32Bytes(LEG_PREFIX), 
+            padTo32Bytes(unpad(prefix, pathPaddingBits)), 
+            padTo32Bytes(childHash));
       }
     };
   }
@@ -716,4 +733,33 @@ export function unpad(path: bigint, pathLengthBits: bigint | false): bigint {
     return path;
   }
   return path & ((1n << pathLengthBits) - 1n);
+}
+
+export function padTo32Bytes(value: bigint | WordArray): WordArray {
+  return padLeft(value, 32);
+}
+
+function padLeft(value: bigint | WordArray, resultBytesLength: number): WordArray {
+  if (typeof(value) == 'object') {
+    const wordArray = value as WordArray;
+    const paddingByteCount = resultBytesLength - wordArray.sigBytes;
+    if (paddingByteCount < 0) {
+      throw new Error(`Input value too long: ${value}`);
+    }
+
+    const paddingWordsCount = Math.ceil(paddingByteCount  / 4);
+    const paddingBuffer: number[] = new Array(paddingWordsCount).fill(0);
+    const zeroPadding = CryptoJS.lib.WordArray.create(paddingBuffer, paddingByteCount);
+
+    return zeroPadding.concat(wordArray);
+  } else if (typeof(value) == 'bigint') {
+    let hexString = value.toString(16);
+    const paddingByteCount = resultBytesLength * 2 - hexString.length;
+    if (paddingByteCount < 0) {
+      throw new Error(`Input value too long: ${value}`);
+    }
+    return CryptoJS.enc.Hex.parse('0'.repeat(paddingByteCount) + hexString);
+  } else {
+    throw new Error(`Unknown type: ${typeof(value)}`);
+  }
 }

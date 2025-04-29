@@ -71,10 +71,10 @@ describe('Sum-Certifying Tree', function() {
     assert.equal(path3.getRootSum(), 100n);
     assert.equal(path4.getRootSum(), 100n);
     
-    assert.equal(path1.getRootHash()!.toString(CryptoJS.enc.Hex), 'c612c2c52684e2d95397ec09fd01e41a12503e2a8403a7099c2bec718b942321');
-    assert.equal(path2.getRootHash()!.toString(CryptoJS.enc.Hex), 'c612c2c52684e2d95397ec09fd01e41a12503e2a8403a7099c2bec718b942321');
-    assert.equal(path3.getRootHash()!.toString(CryptoJS.enc.Hex), 'c612c2c52684e2d95397ec09fd01e41a12503e2a8403a7099c2bec718b942321');
-    assert.equal(path4.getRootHash()!.toString(CryptoJS.enc.Hex), 'c612c2c52684e2d95397ec09fd01e41a12503e2a8403a7099c2bec718b942321');
+    assert.equal(path1.getRootHash()!.toString(CryptoJS.enc.Hex), 'b61201658733cbd385e40c262b75dd583499242744e915ea04bd358b33362fd8');
+    assert.equal(path2.getRootHash()!.toString(CryptoJS.enc.Hex), 'b61201658733cbd385e40c262b75dd583499242744e915ea04bd358b33362fd8');
+    assert.equal(path3.getRootHash()!.toString(CryptoJS.enc.Hex), 'b61201658733cbd385e40c262b75dd583499242744e915ea04bd358b33362fd8');
+    assert.equal(path4.getRootHash()!.toString(CryptoJS.enc.Hex), 'b61201658733cbd385e40c262b75dd583499242744e915ea04bd358b33362fd8');
 
     assert.equal(path1.getLeafValue(), wordArrayToHex(smthash('left-1')));
     assert.equal(path2.getLeafValue(), wordArrayToHex(smthash('left-2')));

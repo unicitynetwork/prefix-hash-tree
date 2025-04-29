@@ -22,7 +22,7 @@ describe('Sum-Certifying Tree Example', function() {
     assert.equal(tree.getRootSum(), 600n);
     assert.equal(
       tree.getRootHash().toString(CryptoJS.enc.Hex), 
-      'fbc5d5fef7ba6e37d050e48869745066ce0dd2178dfa526151c8e817109ea0d3');
+      'fef5cfb1f61e731452f1d643818493104213c20eb7ee9c96f1cb3409459d32df');
   });
 
   it('shows working with proofs', function() {
@@ -34,10 +34,10 @@ describe('Sum-Certifying Tree Example', function() {
     assert.deepStrictEqual(
       path.getItems(), 
       [
-        { type: "sumRoot", rootHash: CryptoJS.enc.Hex.parse("fbc5d5fef7ba6e37d050e48869745066ce0dd2178dfa526151c8e817109ea0d3"), sum: 600n },
+        { type: "sumRoot", rootHash: CryptoJS.enc.Hex.parse("fef5cfb1f61e731452f1d643818493104213c20eb7ee9c96f1cb3409459d32df"), sum: 600n },
         { type: "sumInternalNode", prefix: 16n, siblingHash: undefined, siblingSum: undefined },
-        { type: "sumInternalNode", prefix: 4n, siblingHash: CryptoJS.enc.Hex.parse("a8de8e835830e95096ef6403790461ecc4ebd27df188c8a94b23f87c4e863cf6"), siblingSum: 200n },
-        { type: "sumInternalNode", prefix: ((1n << (256n-4n-2n)) + 1n), siblingHash: CryptoJS.enc.Hex.parse("f5397063c39890df025958174fb5dde92832cd144e21fa9137b44da5fa6bfcde"), siblingSum: 100n },
+        { type: "sumInternalNode", prefix: 4n, siblingHash: CryptoJS.enc.Hex.parse("30f38d28a56b235395af39954e5d6f5c510b2e3e92cb15dcc0f0735734a504c0"), siblingSum: 200n },
+        { type: "sumInternalNode", prefix: ((1n << (256n-4n-2n)) + 1n), siblingHash: CryptoJS.enc.Hex.parse("f000a5b8e30680039f0bc339ef5f9f290fa29443b452b576796e52beeb132c1d"), siblingSum: 100n },
         { type: "sumLeaf", value: CryptoJS.enc.Hex.parse("93f9c50853d1ba7b4dc6244a2a64b2f427cd612ae34a3cad638ef5bc14cc7ecb"), numericValue: 300n }]);
 
     assert.equal(
@@ -46,6 +46,6 @@ describe('Sum-Certifying Tree Example', function() {
     assert.equal(path.getLeafNumericValue(), 300n);
 
     assert.equal(path.getRootSum(), 600n);
-    assert.equal(path.getRootHash()!.toString(CryptoJS.enc.Hex), 'fbc5d5fef7ba6e37d050e48869745066ce0dd2178dfa526151c8e817109ea0d3');
+    assert.equal(path.getRootHash()!.toString(CryptoJS.enc.Hex), 'fef5cfb1f61e731452f1d643818493104213c20eb7ee9c96f1cb3409459d32df');
   });
 });

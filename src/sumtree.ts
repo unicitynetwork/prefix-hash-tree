@@ -1,4 +1,4 @@
-import { AbstractTree, LEFT, RIGHT, AbstractLeafNode, LEAF_PREFIX, AbstractInternalNode, NODE_PREFIX, AbstractLeg, AbstractPath, ValidationResult, LEG_PREFIX, VerificationContext } from './smt.js';
+import { AbstractTree, LEFT, RIGHT, AbstractLeafNode, LEAF_PREFIX, AbstractInternalNode, NODE_PREFIX, AbstractLeg, AbstractPath, ValidationResult, LEG_PREFIX, VerificationContext, padTo32Bytes, unpad } from './smt.js';
 import { HashFunction, PathItem, WordArray } from './types/index.js';
 import { SumPathItem } from './types/sumtreeindex.js';
 import { SumPathItemLeaf } from './types/sumtreeindex.js';
@@ -8,6 +8,7 @@ import { SumPathItemInternalNode } from './types/sumtreeindex.js';
 import { SumPathItemRoot } from './types/sumtreeindex.js';
 import { SumLeaf } from './types/sumtreeindex.js';
 
+import CryptoJS from 'crypto-js';
 
 export class SumTree extends AbstractTree<SumInternalNode, SumLeafNode, SumLeaf, SumLeg, SumPathItem, SumPathItemRoot,
     SumPathItemInternalNode, SumPathItemInternalNodeHashed, SumPathItemLeaf, SumPathItemEmptyBranch, 
@@ -80,7 +81,8 @@ export class SumTree extends AbstractTree<SumInternalNode, SumLeafNode, SumLeaf,
     return new SumLeg(
       this.hashFunction,
       remainingPath,
-      child);
+      child,
+      this.pathPaddingBits);
   }
 }
 export class SumLeafNode extends AbstractLeafNode<SumLeafNode, SumInternalNode, SumLeg> {
@@ -96,7 +98,10 @@ export class SumLeafNode extends AbstractLeafNode<SumLeafNode, SumInternalNode, 
   }
 
   override getHash(): WordArray {
-    return this.hashFunction(LEAF_PREFIX, this.value, this.numericValue);
+    return this.hashFunction(
+      padTo32Bytes(LEAF_PREFIX), 
+      typeof(this.value) == 'string' ? CryptoJS.enc.Utf8.parse(this.value) : padTo32Bytes(this.value),
+      padTo32Bytes(this.numericValue));
   }
 
   public getSum(): bigint {
@@ -110,13 +115,13 @@ export class SumInternalNode extends AbstractInternalNode<SumLeafNode, SumIntern
   }
 
   override getHash(): WordArray {
-    const leftHash = this.left ? this.left.getHash() : null;
-    const rightHash = this.right ? this.right.getHash() : null;
+    const leftHash = this.left ? this.left.getHash() : 0n;
+    const rightHash = this.right ? this.right.getHash() : 0n;
 
-    const leftSum = this.left ? this.left.getSum() : null;
-    const rightSum = this.right ? this.right.getSum() : null;
+    const leftSum = this.left ? this.left.getSum() : 0n;
+    const rightSum = this.right ? this.right.getSum() : 0n;
 
-    return this.hashFunction(NODE_PREFIX, leftHash, rightHash, leftSum, rightSum);
+    return this.hashFunction(padTo32Bytes(NODE_PREFIX), padTo32Bytes(leftHash), padTo32Bytes(rightHash), padTo32Bytes(leftSum), padTo32Bytes(rightSum));
   }
 
   public getSum(): bigint {
@@ -129,8 +134,8 @@ export class SumInternalNode extends AbstractInternalNode<SumLeafNode, SumIntern
 export class SumLeg extends AbstractLeg<SumLeafNode, SumInternalNode, SumLeg> {
   private sum: bigint | null = null;
 
-  public constructor(hashFunction: HashFunction, prefix: bigint, node: SumLeafNode | SumInternalNode) {
-    super(hashFunction, prefix, node);
+  public constructor(hashFunction: HashFunction, prefix: bigint, node: SumLeafNode | SumInternalNode, pathPaddingBits: bigint | false) {
+    super(hashFunction, prefix, node, pathPaddingBits);
   }
 
   override recalculateIfOutdated() {
@@ -220,6 +225,7 @@ export class SumPath extends AbstractPath<SumPathItem, SumPathItemRoot, SumPathI
   }
 
   override createVerificationContext(hashFunction: HashFunction): VerificationContext {
+    const pathPaddingBits = this.pathPaddingBits;
     let sumSoFar: bigint = 0n;
     return {
       beginCalculation(pathItem: PathItem): void {
@@ -244,49 +250,53 @@ export class SumPath extends AbstractPath<SumPathItem, SumPathItemRoot, SumPathI
       hashLeftNode(pathItemAsSupertype: PathItem, legHash: WordArray): WordArray {
         const pathItem = pathItemAsSupertype as SumPathItemInternalNode;
         return hashFunction(
-          NODE_PREFIX,
-          legHash,
-          pathItem.siblingHash ? pathItem.siblingHash : null,
-          sumSoFar,
-          pathItem.siblingSum ? pathItem.siblingSum : null
+          padTo32Bytes(NODE_PREFIX),
+          padTo32Bytes(legHash),
+          padTo32Bytes(pathItem.siblingHash ? pathItem.siblingHash : 0n),
+          padTo32Bytes(sumSoFar),
+          padTo32Bytes(pathItem.siblingSum ? pathItem.siblingSum : 0n)
         );
       },
       hashRightNode(pathItemAsSupertype: PathItem, legHash: WordArray): WordArray {
         const pathItem = pathItemAsSupertype as SumPathItemInternalNode;
         return hashFunction(
-          NODE_PREFIX,
-          pathItem.siblingHash ? pathItem.siblingHash : null,
-          legHash,
-          pathItem.siblingSum ? pathItem.siblingSum : null,
-          sumSoFar
+          padTo32Bytes(NODE_PREFIX),
+          padTo32Bytes(pathItem.siblingHash ? pathItem.siblingHash : 0n),
+          padTo32Bytes(legHash),
+          padTo32Bytes(pathItem.siblingSum ? pathItem.siblingSum : 0n),
+          padTo32Bytes(sumSoFar)
         );
       },
       hashLeftEmptyBranch(pathItemAsSupertype: PathItem): WordArray {
         const pathItem = pathItemAsSupertype as SumPathItemEmptyBranch;
         return hashFunction(
-          NODE_PREFIX,
-          null,
-          pathItem.siblingHash,
-          null,
-          pathItem.siblingSum);
+          padTo32Bytes(NODE_PREFIX),
+          padTo32Bytes(0n),
+          padTo32Bytes(pathItem.siblingHash),
+          padTo32Bytes(0n),
+          padTo32Bytes(pathItem.siblingSum));
       },
       hashRightEmptyBranch(pathItemAsSupertype: PathItem): WordArray {
         const pathItem = pathItemAsSupertype as SumPathItemEmptyBranch;
         return hashFunction(
-          NODE_PREFIX,
-          pathItem.siblingHash,
-          null,
-          pathItem.siblingSum,
-          null);
+          padTo32Bytes(NODE_PREFIX),
+          padTo32Bytes(pathItem.siblingHash),
+          padTo32Bytes(0n),
+          padTo32Bytes(pathItem.siblingSum),
+          padTo32Bytes(0n));
       },
       hashLeaf(pathItem: PathItem): WordArray {
+        const leaf = pathItem as SumPathItemLeaf;
         return hashFunction(
-          LEAF_PREFIX,
-          (pathItem as SumPathItemLeaf).value,
-          (pathItem as SumPathItemLeaf).numericValue);
+          padTo32Bytes(LEAF_PREFIX),
+          typeof(leaf.value) == 'string' ? CryptoJS.enc.Utf8.parse(leaf.value) : padTo32Bytes(leaf.value),
+          padTo32Bytes(leaf.numericValue));
       },
       hashLeg(prefix: bigint, childHash: WordArray): WordArray {
-        return hashFunction(LEG_PREFIX, prefix, childHash);
+        return hashFunction(
+          padTo32Bytes(LEG_PREFIX), 
+          padTo32Bytes(unpad(prefix, pathPaddingBits)), 
+          padTo32Bytes(childHash));
       }
     };
   }

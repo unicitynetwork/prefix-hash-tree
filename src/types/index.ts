@@ -2,7 +2,7 @@ import CryptoJS from 'crypto-js';
 
 export type WordArray = CryptoJS.WordArray;
 
-export type HashFunction = (...inputs: (WordArray | bigint | string | null)[]) => WordArray;
+export type HashFunction = (...inputs: (WordArray)[]) => WordArray;
 
 export interface Leaf {
   value: string | WordArray;
