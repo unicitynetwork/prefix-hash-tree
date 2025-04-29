@@ -122,13 +122,12 @@ export abstract class AbstractTree<
     const { commonPrefix, remainingPathUniqueSuffix, existingPrefixUniqueSuffix } = 
         splitPrefix(remainingPath, leg.prefix);
 
-    // TODO: refactor: if the path leads to the children of this leg... .
+    // If the path leads to the children of this leg.
     if (commonPrefix === leg.prefix) {
-      // TODO: refactor: if the path would go to the leaf node (that is, key is found) or to the children of that leaf node (that is, the key is not in the tree)... .
       if (leg.child.isLeaf()) {
+        // Here, either the key is found or not, but the path terminates at the leaf.
         return [this.createPathItemInternalNode(commonPrefix), this.createPathItemLeafNode(leg.child)];
       } else if (leg.child.isInternal()) {
-        // TODO: refactor: if the path would go to the child node (that is, key still may or may not be in the tree, need to continue traversing).
         const path = this.searchPath(leg.child, remainingPathUniqueSuffix);
         path.unshift(this.createPathItemInternalNode(commonPrefix));
         return path;
@@ -137,7 +136,7 @@ export abstract class AbstractTree<
       }
     }
 
-    // TODO: refactor: if the path diverges from the curren leg's prefix (the key is not in the tree)... .
+    // The path diverges from the curren leg's prefix (the key is not in the tree).
     const item = this.createPathItemInternalNode(leg.prefix);
 
     const valueItem: PathItem = 
