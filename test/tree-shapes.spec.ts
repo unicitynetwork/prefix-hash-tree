@@ -1,8 +1,11 @@
-/// <reference path="../src/types/unicitylabs__utils.d.ts" />
 import { assert } from 'chai';
-import { smthash, wordArrayToHex } from '@unicitylabs/utils';
 
 import { Leaf, SMT, SumTree, Path, SumPath } from '../src/index.js';
+import { NodeDataHasher } from '@unicitylabs/commons/lib/hash/NodeDataHasher.js';
+import { DataHasherFactory } from '@unicitylabs/commons/lib/hash/DataHasherFactory.js';
+import { sha256 } from './utils.js';
+import { HexConverter } from '@unicitylabs/commons/lib/util/HexConverter.js';
+import { HashAlgorithm } from '@unicitylabs/commons/lib/hash/HashAlgorithm.js';
 
 type Tree = SMT | SumTree;
 
@@ -10,13 +13,14 @@ const testConfigs = [
   {
     name: 'SMT routines',
     isSumTree: false,
-    createTree: (leaves: Map<bigint, Leaf>) => new SMT(smthash, leaves, false),
+    createTree: (leaves: Map<bigint, Leaf>) => new SMT(new DataHasherFactory(NodeDataHasher), HashAlgorithm.SHA256, leaves, false),
   },
   {
     name: 'Sum tree routines',
     isSumTree: true,
     createTree: (leaves: Map<bigint, Leaf>) => new SumTree(
-        smthash, 
+        new DataHasherFactory(NodeDataHasher), 
+        HashAlgorithm.SHA256,
         new Map(Array.from(leaves).map(([path, leaf]) => (
           [ path, {...leaf, numericValue: path + 99n} ]
         ))),
@@ -33,34 +37,32 @@ testConfigs.forEach((config) => {
     
     const allPaths = allPathBits.map(bits => BigInt('0b1' + bits));
     
-    it('should have all paths working correctly', function() {
+    it('should have all paths working correctly', async function() {
       this.timeout(100000);
 
       for (let pathsBitmap = 0; pathsBitmap < 256; pathsBitmap++) {
         const selectedPathsUnpremuted = selectPathsByBitmap(allPaths, pathsBitmap);
 
-        [selectedPathsUnpremuted, selectedPathsUnpremuted.reverse(), /*...permutations(selectedPathsUnpremuted)*/].forEach(selectedPaths => {
-          const tree = config.createTree(
-            new Map(
-              selectedPaths.map(path => {
-                return [ path, { value: wordArrayToHex(smthash(`value-${path}`)) } ];
-              })
-            )
-          );
-          assertPaths(selectedPaths, tree);
+        [selectedPathsUnpremuted, selectedPathsUnpremuted.reverse(), /*...permutations(selectedPathsUnpremuted)*/].forEach(async selectedPaths => {
+          const leaves = await Promise.all(selectedPaths.map(async (path) => {
+            const hashValue = await sha256(`value-${path}`);
+            const result: [bigint, { value: string }] = [path, { value: HexConverter.encode(hashValue) }];
+            return result;
+          }));
+          const tree = config.createTree(new Map(leaves));
+          await assertPaths(selectedPaths, tree);
         });
-        
       }
 
-      function assertPaths(selectedPaths: bigint[], tree: Tree) {
+      async function assertPaths(selectedPaths: bigint[], tree: Tree) {
         for (let j = 0; j < 8; j++) {
           const path = allPaths[j];
           const shouldBeIncluded = selectedPaths.includes(path);
 
-          const treePath = tree.getProof(path);
+          const treePath = await tree.getProof(path);
 
           assert.equal(
-            safeIncludesPath(treePath, path),
+            await safeIncludesPath(treePath, path),
             shouldBeIncluded,
             `Tree ${selectedPaths}: Path ${allPathBits[j]} should ${shouldBeIncluded ? '' : 'NOT '}be included`
           );
@@ -68,7 +70,7 @@ testConfigs.forEach((config) => {
           if (shouldBeIncluded) {
             assert.equal(
               safeExtractValue(treePath),
-              wordArrayToHex(smthash(`value-${allPaths[j]}`)),
+              HexConverter.encode(await sha256(`value-${allPaths[j]}`)),
               `Tree ${selectedPaths}: Value for path ${allPathBits[j]} is incorrect`
             );
           }
@@ -84,9 +86,9 @@ function selectPathsByBitmap(allPaths: bigint[], pathsCombination: number) {
   });
 }
 
-function safeIncludesPath(treePath: Path | SumPath, path: bigint): boolean {
+async function safeIncludesPath(treePath: Path | SumPath, path: bigint): Promise<boolean> {
   try {
-    const result = treePath.provesInclusionAt(path);
+    const result = await treePath.provesInclusionAt(path);
     return result;
   } catch (e) {
     if (e instanceof Error && 

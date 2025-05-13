@@ -1,13 +1,12 @@
-/// <reference path="./types/unicitylabs__utils.d.ts" />
-import { wordArrayToHex } from '@unicitylabs/utils';
-
-import { HashFunction, Leaf, PathItem, PathItemRoot, PathItemInternalNode,
+import { Leaf, PathItem, PathItemRoot, PathItemInternalNode,
   PathItemInternalNodeHashed, PathItemEmptyBranch, PathItemLeaf, 
   AbstractPathItemRoot, AbstractPathItemInternalNode,
-  AbstractPathItemInternalNodeHashed, AbstractPathItemEmptyBranch, AbstractPathItemLeaf,
-  WordArray } from './types/index.js';
+  AbstractPathItemInternalNodeHashed, AbstractPathItemEmptyBranch, AbstractPathItemLeaf } from './types/index.js';
 
-import CryptoJS from 'crypto-js';
+import { IDataHasher } from '@unicitylabs/commons/lib/hash/IDataHasher.js';
+import { DataHasherFactory } from '@unicitylabs/commons/lib/hash/DataHasherFactory.js';
+import { HashAlgorithm } from '@unicitylabs/commons/lib/hash/HashAlgorithm.js';
+import { HexConverter } from '@unicitylabs/commons/lib/util/HexConverter.js';
 
 export const LEFT: bigint = 0n;
 export const RIGHT: bigint = 1n;
@@ -29,7 +28,7 @@ export abstract class AbstractTree<
       PathItemEmptyBranchType extends AbstractPathItemEmptyBranch,
       PathType extends AbstractPath<PathItemType, PathItemRootType, PathItemInternalNodeType, PathItemEmptyBranchType, PathItemLeafType>> 
 {
-  protected readonly hashFunction: HashFunction;
+  protected readonly hashOptions: HashOptions;
   protected root: InternalNodeType;
   protected readonly pathPaddingBits: bigint | false;
 
@@ -43,19 +42,19 @@ export abstract class AbstractTree<
    * for padding (e.g., 256). Provide a positive integer to set a custom length.
    * Set to `false` disable path padding entirely. Defaults to 256 if `undefined`.
    */
-  public constructor(hashFunction: HashFunction, leavesByPath: Map<bigint, LeafType>, pathPaddingBits: bigint | false = 256n) {
-    this.hashFunction = hashFunction;
+  public constructor(dataHasherFactory: DataHasherFactory<IDataHasher>, algorithm: HashAlgorithm, leavesByPath: Map<bigint, LeafType>, pathPaddingBits: bigint | false = 256n) {
+    this.hashOptions = {dataHasherFactory, algorithm};
     this.pathPaddingBits = pathPaddingBits;
     this.root = this.buildTree(leavesByPath);
   }
 
-  public getProof(requestPath: bigint): PathType {
+  public async getProof(requestPath: bigint): Promise<PathType> {
     const path = this.padAndValidatePath(requestPath);
     if (this.isEmpty()) {
-      return this.createPathForEmptyTree();
+      return await this.createPathForEmptyTree();
     }
-    const pathItems = this.searchPath(this.root, path);
-    pathItems.unshift(this.createPathItemRoot());
+    const pathItems = await this.searchPath(this.root, path);
+    pathItems.unshift(await this.createPathItemRoot());
     return this.createPath(pathItems);
   }
 
@@ -68,8 +67,8 @@ export abstract class AbstractTree<
     this.traverse(this.root, path, leaf);
   }
 
-  public getRootHash(): WordArray {
-    return this.root.getHash();
+  public async getRootHash(): Promise<Uint8Array> {
+    return await this.root.getHash();
   }
 
   protected buildTree(leavesByPath: Map<bigint, LeafType>): InternalNodeType {
@@ -95,30 +94,30 @@ export abstract class AbstractTree<
     }
   }
 
-  protected searchPath(node: InternalNodeType, remainingPath: bigint): PathItem[] {
+  protected async searchPath(node: InternalNodeType, remainingPath: bigint): Promise<PathItem[]> {
     const direction = getDirection(remainingPath);
     if (direction === LEFT) {
       if (!node.left) {
-        return [this.createEmptyLeftBranchPathItem(node)];
+        return [await this.createEmptyLeftBranchPathItem(node)];
       }
-      const path = this.searchLeg(node.left, remainingPath);
+      const path = await this.searchLeg(node.left, remainingPath);
       if (path.length > 0) {
-        this.addSiblingDataToLeft(path[0], node);
+        await this.addSiblingDataToLeft(path[0], node);
       }
       return path;
     } else {
       if (!node.right) {
-        return [this.createEmptyRightBranchPathItem(node)];
+        return [await this.createEmptyRightBranchPathItem(node)];
       }
-      const path = this.searchLeg(node.right, remainingPath);
+      const path = await this.searchLeg(node.right, remainingPath);
       if (path.length > 0) {
-        this.addSiblingDataToRight(path[0], node);
+        await this.addSiblingDataToRight(path[0], node);
       }
       return path;
     }
   }
 
-  protected searchLeg(leg: LegType, remainingPath: bigint): PathItem[] {
+  protected async searchLeg(leg: LegType, remainingPath: bigint): Promise<PathItem[]> {
     const { commonPrefix, remainingPathUniqueSuffix, existingPrefixUniqueSuffix } = 
         splitPrefix(remainingPath, leg.prefix);
 
@@ -126,9 +125,9 @@ export abstract class AbstractTree<
     if (commonPrefix === leg.prefix) {
       if (leg.child.isLeaf()) {
         // Here, either the key is found or not, but the path terminates at the leaf.
-        return [this.createPathItemInternalNode(commonPrefix), this.createPathItemLeafNode(leg.child)];
+        return [this.createPathItemInternalNode(commonPrefix), await this.createPathItemLeafNode(leg.child)];
       } else if (leg.child.isInternal()) {
-        const path = this.searchPath(leg.child, remainingPathUniqueSuffix);
+        const path = await this.searchPath(leg.child, remainingPathUniqueSuffix);
         path.unshift(this.createPathItemInternalNode(commonPrefix));
         return path;
       } else {
@@ -141,8 +140,8 @@ export abstract class AbstractTree<
 
     const valueItem: PathItem = 
       leg.child.isLeaf() ?
-        this.createPathItemLeafNode(leg.child) :
-        this.createPathItemInternalNodeHashed(leg.child);
+        await this.createPathItemLeafNode(leg.child) :
+        await this.createPathItemInternalNodeHashed(leg.child);
 
     return [item, valueItem];
   }
@@ -201,25 +200,25 @@ export abstract class AbstractTree<
 
   protected abstract createNewLeaf(leaf: LeafType): LeafNodeType;
 
-  protected abstract createPathForEmptyTree(): PathType;
+  protected abstract createPathForEmptyTree(): Promise<PathType>;
 
-  protected abstract createPathItemRoot(): PathItemRootType;
+  protected abstract createPathItemRoot(): Promise<PathItemRootType>;
 
   protected abstract createInternalNode(): InternalNodeType;
 
-  protected abstract createEmptyLeftBranchPathItem(node: InternalNodeType): PathItemEmptyBranchType;
+  protected abstract createEmptyLeftBranchPathItem(node: InternalNodeType): Promise<PathItemEmptyBranchType>;
 
-  protected abstract createEmptyRightBranchPathItem(node: InternalNodeType): PathItemEmptyBranchType;
+  protected abstract createEmptyRightBranchPathItem(node: InternalNodeType): Promise<PathItemEmptyBranchType>;
 
-  protected abstract addSiblingDataToLeft(pathItem: PathItem, node: InternalNodeType): void;
+  protected abstract addSiblingDataToLeft(pathItem: PathItem, node: InternalNodeType): Promise<void>;
 
-  protected abstract addSiblingDataToRight(pathItem: PathItem, node: InternalNodeType): void;
+  protected abstract addSiblingDataToRight(pathItem: PathItem, node: InternalNodeType): Promise<void>;
 
   protected abstract createPathItemInternalNode(prefix: bigint): PathItemInternalNodeType;
 
-  protected abstract createPathItemLeafNode(leaf: LeafNodeType): PathItemLeafType;
+  protected abstract createPathItemLeafNode(leaf: LeafNodeType): Promise<PathItemLeafType>;
 
-  protected abstract createPathItemInternalNodeHashed(node: InternalNodeType): PathItemInternalNodeHashedType;
+  protected abstract createPathItemInternalNodeHashed(node: InternalNodeType): Promise<PathItemInternalNodeHashedType>;
 
   protected abstract createLeg(remainingPath: bigint, child: LeafNodeType | InternalNodeType): LegType;
 }
@@ -227,62 +226,62 @@ export abstract class AbstractTree<
 export class SMT extends AbstractTree<InternalNode, LeafNode, Leaf, Leg, PathItem, PathItemRoot, PathItemInternalNode, 
                          PathItemInternalNodeHashed, PathItemLeaf, PathItemEmptyBranch, Path> 
 {
-  protected createPathForEmptyTree(): Path {
+  protected async createPathForEmptyTree(): Promise<Path> {
     return new Path (
-      [{type: 'root', rootHash: this.getRootHash()} as PathItemRoot],
-      this.hashFunction,
+      [{type: 'root', rootHash: await this.getRootHash()} as PathItemRoot],
+      this.hashOptions,
       this.pathPaddingBits);
   }
 
   protected createPath(pathItems: PathItem[]): Path {
-    return new Path(pathItems, this.hashFunction, this.pathPaddingBits);
+    return new Path(pathItems, this.hashOptions, this.pathPaddingBits);
   }
 
   protected createInternalNode(): InternalNode {
-    return new InternalNode(this.hashFunction);
+    return new InternalNode(this.hashOptions);
   }
 
   protected createNewLeaf(leaf: Leaf): LeafNode {
-    return new LeafNode(this.hashFunction, leaf.value);
+    return new LeafNode(this.hashOptions, leaf.value);
   }
 
-  protected createPathItemRoot(): PathItemRoot {
-    return { type: 'root', rootHash: this.root.getHash() };
+  protected async createPathItemRoot(): Promise<PathItemRoot> {
+    return { type: 'root', rootHash: await this.root.getHash() };
   }
 
-  protected createEmptyLeftBranchPathItem(node: InternalNode): PathItemEmptyBranch {
-    return { type: 'emptyBranch', direction: LEFT, siblingHash: node.right!.getHash()};
+  protected async createEmptyLeftBranchPathItem(node: InternalNode): Promise<PathItemEmptyBranch> {
+    return { type: 'emptyBranch', direction: LEFT, siblingHash: await node.right!.getHash()};
   }
 
-  protected createEmptyRightBranchPathItem(node: InternalNode): PathItemEmptyBranch {
-    return { type: 'emptyBranch', direction: RIGHT, siblingHash: node.left!.getHash()};
+  protected async createEmptyRightBranchPathItem(node: InternalNode): Promise<PathItemEmptyBranch> {
+    return { type: 'emptyBranch', direction: RIGHT, siblingHash: await node.left!.getHash()};
   }
 
   protected createPathItemInternalNode(prefix: bigint): PathItemInternalNode {
     return { type: 'internalNode', prefix, siblingHash: undefined };
   }
 
-  protected createPathItemInternalNodeHashed(node: InternalNode): PathItemInternalNodeHashed {
-    return { type: 'internalNodeHashed', nodeHash: node.getHash() };
+  protected async createPathItemInternalNodeHashed(node: InternalNode): Promise<PathItemInternalNodeHashed> {
+    return { type: 'internalNodeHashed', nodeHash: await node.getHash() };
   }
 
-  protected createPathItemLeafNode(leaf: LeafNode): PathItemLeaf {
+  protected async createPathItemLeafNode(leaf: LeafNode): Promise<PathItemLeaf> {
     return { type: 'leaf', value: leaf.getValue() };
   }
 
-  protected addSiblingDataToLeft(untypedPathItem: PathItem, node: InternalNode): void {
+  protected async addSiblingDataToLeft(untypedPathItem: PathItem, node: InternalNode): Promise<void> {
     const pathItem = untypedPathItem as PathItemInternalNode;
-    pathItem.siblingHash = node.right ? node.right.getHash() : undefined;
+    pathItem.siblingHash = node.right ? await node.right.getHash() : undefined;
   }
 
-  protected addSiblingDataToRight(untypedPathItem: PathItem, node: InternalNode): void {
+  protected async addSiblingDataToRight(untypedPathItem: PathItem, node: InternalNode): Promise<void> {
     const pathItem = untypedPathItem as PathItemInternalNode;
-    pathItem.siblingHash = node.left ? node.left.getHash() : undefined;
+    pathItem.siblingHash = node.left ? await node.left.getHash() : undefined;
   }
 
   protected createLeg(remainingPath: bigint, child: LeafNode | InternalNode): Leg {
     return new Leg(
-      this.hashFunction,
+      this.hashOptions,
       remainingPath,
       child,
       this.pathPaddingBits);
@@ -291,14 +290,15 @@ export class SMT extends AbstractTree<InternalNode, LeafNode, Leaf, Leg, PathIte
 
 export abstract class Node<LeafNodeType extends AbstractLeafNode<LeafNodeType, InternalNodeType, LegType>, 
                            InternalNodeType extends AbstractInternalNode<LeafNodeType, InternalNodeType, LegType>,
-                           LegType extends AbstractLeg<LeafNodeType, InternalNodeType, LegType>> {
-  protected readonly hashFunction: HashFunction;
+                           LegType extends AbstractLeg<LeafNodeType, InternalNodeType, LegType>> 
+{
+  protected readonly hashOptions: HashOptions;
 
-  protected constructor(hashFunction: HashFunction) {
-    this.hashFunction = hashFunction;
+  protected constructor(hashOptions: HashOptions) {
+    this.hashOptions = hashOptions;
   }
 
-  abstract getHash(): WordArray;
+  abstract getHash(): Promise<Uint8Array>;
   
   public isLeaf(): this is LeafNodeType {
     return this instanceof AbstractLeafNode;
@@ -313,24 +313,26 @@ export abstract class AbstractLeafNode<LeafNodeType extends AbstractLeafNode<Lea
                                        InternalNodeType extends AbstractInternalNode<LeafNodeType, InternalNodeType, LegType>,
                                        LegType extends AbstractLeg<LeafNodeType, InternalNodeType, LegType>> 
      extends Node<LeafNodeType, InternalNodeType, LegType> {
-  public readonly value: string | WordArray;
+  public readonly value: string | Uint8Array;
 
   constructor(
-      hashFunction: HashFunction,
-      value: string | WordArray
+      hashOptions: HashOptions,
+      value: string | Uint8Array
   ) {
-      super(hashFunction);
+      super(hashOptions);
       this.value = value;
   }
 
-  public getValue(): string | WordArray {
+  public getValue(): string | Uint8Array {
     return this.value;
   }
 
-  override getHash(): WordArray {
-    return this.hashFunction(
-      padTo32Bytes(LEAF_PREFIX), 
-      typeof(this.value) == 'string' ? CryptoJS.enc.Utf8.parse(this.value) : padTo32Bytes(this.value));
+  override async getHash(): Promise<Uint8Array> {
+    const hasher = createHasher(this.hashOptions);
+    return (await hasher
+        .update(padTo32Bytes(LEAF_PREFIX))
+        .update(typeof(this.value) == 'string' ? Buffer.from(this.value) : padTo32Bytes(this.value))
+        .digest()).data;
   }
 }
 
@@ -345,15 +347,20 @@ export abstract class AbstractInternalNode<LeafNodeType extends AbstractLeafNode
   public left: LegType | null = null;
   public right: LegType | null = null;
 
-  constructor(hashFunction: HashFunction) {
-    super(hashFunction);
+  constructor(hashOptions: HashOptions) {
+    super(hashOptions);
   }
 
-  override getHash(): WordArray {
-    const leftHash = this.left ? this.left.getHash() : 0n;
-    const rightHash = this.right ? this.right.getHash() : 0n;
+  override async getHash(): Promise<Uint8Array> {
+    const leftHash = this.left ? await this.left.getHash() : 0n;
+    const rightHash = this.right ? await this.right.getHash() : 0n;
 
-    return this.hashFunction(padTo32Bytes(NODE_PREFIX), padTo32Bytes(leftHash), padTo32Bytes(rightHash));
+    const hasher = createHasher(this.hashOptions);
+    return (await hasher
+      .update(padTo32Bytes(NODE_PREFIX))
+      .update(padTo32Bytes(leftHash))
+      .update(padTo32Bytes(rightHash))
+      .digest()).data;
   }
 }
 
@@ -364,15 +371,15 @@ export abstract class AbstractLeg<LeafNodeType extends AbstractLeafNode<LeafNode
                            InternalNodeType extends AbstractInternalNode<LeafNodeType, InternalNodeType, LegType>,
                            LegType extends AbstractLeg<LeafNodeType, InternalNodeType, LegType>>
 {
-  private hashFunction: HashFunction;
+  protected readonly hashOptions: HashOptions;
   private _prefix!: bigint;
   public child: LeafNodeType | InternalNodeType;
   protected outdated: boolean = true;
-  private hash: WordArray | null = null;
+  private hash: Uint8Array | null = null;
   protected readonly pathPaddingBits: bigint | false;
 
-  public constructor(hashFunction: HashFunction, prefix: bigint, node: LeafNodeType | InternalNodeType, pathPaddingBits: bigint | false) {
-    this.hashFunction = hashFunction;
+  public constructor(hashOptions: HashOptions, prefix: bigint, node: LeafNodeType | InternalNodeType, pathPaddingBits: bigint | false) {
+    this.hashOptions = hashOptions;
     this.prefix = prefix;
     this.child = node;
     this.pathPaddingBits = pathPaddingBits;
@@ -387,17 +394,19 @@ export abstract class AbstractLeg<LeafNodeType extends AbstractLeafNode<LeafNode
     return this._prefix;
   }
 
-  public getHash(): WordArray {
-    this.recalculateIfOutdated();
+  public async getHash(): Promise<Uint8Array> {
+    await this.recalculateIfOutdated();
     return this.hash!;
   }
   
-  protected recalculateIfOutdated() {
+  protected async recalculateIfOutdated() {
     if (this.outdated) {
-      this.hash = this.hashFunction(
-        padTo32Bytes(LEG_PREFIX), 
-        padTo32Bytes(unpad(this.prefix, this.pathPaddingBits)), 
-        padTo32Bytes(this.child.getHash()));
+      const hasher = createHasher(this.hashOptions);
+      this.hash = (await hasher
+        .update(padTo32Bytes(LEG_PREFIX))
+        .update(padTo32Bytes(unpad(this.prefix, this.pathPaddingBits)))
+        .update(padTo32Bytes(await this.child.getHash()))
+        .digest()).data;
       this.outdated = false;
     }
   }
@@ -420,31 +429,31 @@ export abstract class AbstractPath<
     PathItemLeafType extends AbstractPathItemLeaf> 
 {
   protected readonly path: PathItemType[];
-  protected readonly hashFunction: HashFunction;
+  protected readonly hashOptions: HashOptions;
   protected readonly pathPaddingBits: bigint | false;
 
-  constructor(items: PathItemType[], hashFunction: HashFunction, pathPaddingBits: bigint | false) {
+  constructor(items: PathItemType[], hashOptions: HashOptions, pathPaddingBits: bigint | false) {
     this.path = items;
-    this.hashFunction = hashFunction;
+    this.hashOptions = hashOptions ;
     this.pathPaddingBits = pathPaddingBits;
   }
 
-  public verifyPath(): ValidationResult {
+  public async verifyPath(): Promise<ValidationResult> {
     if (this.emptyTree()) {
       return {success: true};
     }
 
-    const context = this.createVerificationContext(this.hashFunction);
+    const context = this.createVerificationContext(this.hashOptions);
 
-    let h: WordArray;
+    let h: Uint8Array;
 
     const lastItem = this.path[this.path.length - 1];
     if (this.isEmptyBranch(lastItem)) {
       const lastPathItem = lastItem as unknown as PathItemEmptyBranchType;
       if (getDirection(lastPathItem.direction) === LEFT) {
-        h = context.hashLeftEmptyBranch(lastPathItem);
+        h = await context.hashLeftEmptyBranch(lastPathItem);
       } else {
-        h = context.hashRightEmptyBranch(lastPathItem);
+        h = await context.hashRightEmptyBranch(lastPathItem);
       }
     } else {
       if ((!this.isLeaf(lastItem)) &&
@@ -453,30 +462,30 @@ export abstract class AbstractPath<
       }
 
       if (this.isLeaf(this.path[this.path.length - 1])) {
-        h = context.hashLeaf(this.path[this.path.length - 1]);
+        h = await context.hashLeaf(this.path[this.path.length - 1]);
       } else {
         h = this.getNodeHashFromInternalNodeHashed(this.path[this.path.length - 1]);
       }
     }
 
-    context.beginCalculation(this.path[this.path.length - 1]);
+    await context.beginCalculation(this.path[this.path.length - 1]);
     
     for (let i = this.path.length - 3; i >= 0; i--) {
       const pathItem = this.path[i + 1] as unknown as PathItemInternalNodeType;
       const prefix = pathItem.prefix;
       validatePrefix(prefix);
-      const legHash = context.hashLeg(prefix, h);
+      const legHash = await context.hashLeg(prefix, h);
 
       if (getDirection(prefix) === LEFT) {
-        h = context.hashLeftNode(pathItem, legHash);
+        h = await context.hashLeftNode(pathItem, legHash);
       } else {
-        h = context.hashRightNode(pathItem, legHash);
+        h = await context.hashRightNode(pathItem, legHash);
       }
-      context.pathItemProcessed(pathItem);
+      await context.pathItemProcessed(pathItem);
     }
   
     return this.createValidationResult(
-        wordArrayToHex(h) === wordArrayToHex((this.path[0] as unknown as PathItemRootType).rootHash),
+        uint8ArraysEqual(h, (this.path[0] as unknown as PathItemRootType).rootHash),
         'Hash mismatch');
   }
 
@@ -492,9 +501,9 @@ export abstract class AbstractPath<
     return this.path.length == 1;
   }
 
-  public provesInclusionAt(requestPath: bigint): boolean {
+  public async provesInclusionAt(requestPath: bigint): Promise<boolean> {
     const paddedRequestPath = padAndValidatePath(requestPath, this.pathPaddingBits);
-    const pathValidationResult = this.verifyPath();
+    const pathValidationResult = await this.verifyPath();
     if (!pathValidationResult.success) {
       throw new Error(`Path integrity check error for path ${paddedRequestPath}: ${pathValidationResult.error}`);
     }
@@ -547,7 +556,7 @@ export abstract class AbstractPath<
     return result;
   }
 
-  public getLeafValue(): string | WordArray | undefined {
+  public getLeafValue(): string | Uint8Array | undefined {
     const leaf = this.path[this.path.length - 1];
     if (!(leaf as unknown as PathItemLeafType).value || 
         (leaf as unknown as PathItemInternalNodeType).siblingHash || 
@@ -557,7 +566,7 @@ export abstract class AbstractPath<
     return (leaf as unknown as PathItemLeafType).value;
   }
 
-  public getRootHash(): WordArray | undefined {
+  public getRootHash(): Uint8Array | undefined {
     if (this.path.length === 0) {
       return undefined;
     }
@@ -573,19 +582,15 @@ export abstract class AbstractPath<
     return this.path;
   }
 
-  public getHashFunction(): HashFunction {
-    return this.hashFunction;
-  }
-
   protected abstract isLeaf(pathItem: PathItemType): boolean;
 
   protected abstract isEmptyBranch(pathItem: PathItemType): boolean;
 
   protected abstract isInternalNodeHashed(lastItem: PathItemType): boolean;
 
-  protected abstract getNodeHashFromInternalNodeHashed(pathItem: PathItemType): WordArray;
+  protected abstract getNodeHashFromInternalNodeHashed(pathItem: PathItemType): Uint8Array;
 
-  protected abstract createVerificationContext(hashFunction: HashFunction): VerificationContext;
+  protected abstract createVerificationContext(hashOptions: HashOptions): VerificationContext;
 }
 
 export class Path extends AbstractPath<PathItem, PathItemRoot, PathItemInternalNode, PathItemEmptyBranch, PathItemLeaf> {
@@ -601,70 +606,82 @@ export class Path extends AbstractPath<PathItem, PathItemRoot, PathItemInternalN
     return 'type' in pathItem && pathItem.type == 'internalNodeHashed';
   }
 
-  protected getNodeHashFromInternalNodeHashed(pathItem: PathItem): WordArray {
+  protected getNodeHashFromInternalNodeHashed(pathItem: PathItem): Uint8Array {
     return (pathItem as PathItemInternalNodeHashed).nodeHash;
   }
 
-  protected createVerificationContext(hashFunction: HashFunction): VerificationContext {
+  protected createVerificationContext(hashOptions: HashOptions): VerificationContext {
     const pathPaddingBits = this.pathPaddingBits;
     return {
-      beginCalculation(pathItem: PathItem): void {
+      async beginCalculation(pathItem: PathItem): Promise<void> {
       },
-      pathItemProcessed(pathItemAsSupertype: PathItem): void {
+      async pathItemProcessed(pathItemAsSupertype: PathItem): Promise<void> {
       },
-      hashLeftNode(pathItemAsSupertype: PathItem, legHash: WordArray): WordArray {
+      async hashLeftNode(pathItemAsSupertype: PathItem, legHash: Uint8Array): Promise<Uint8Array> {
         const pathItem = pathItemAsSupertype as PathItemInternalNode;
-        return hashFunction(
-          padTo32Bytes(NODE_PREFIX), 
-          padTo32Bytes(legHash), 
-          padTo32Bytes(pathItem.siblingHash ? pathItem.siblingHash : 0n)); 
+        const hasher = createHasher(hashOptions);
+        return (await hasher
+          .update(padTo32Bytes(NODE_PREFIX))
+          .update(padTo32Bytes(legHash))
+          .update(padTo32Bytes(pathItem.siblingHash ? pathItem.siblingHash : 0n))
+        .digest()).data;
       },
-      hashRightNode(pathItemAsSupertype: PathItem, legHash: WordArray): WordArray {
+      async hashRightNode(pathItemAsSupertype: PathItem, legHash: Uint8Array): Promise<Uint8Array> {
         const pathItem = pathItemAsSupertype as PathItemInternalNode;
-        return hashFunction(
-          padTo32Bytes(NODE_PREFIX), 
-          padTo32Bytes(pathItem.siblingHash ? pathItem.siblingHash : 0n), 
-          padTo32Bytes(legHash));
+        const hasher = createHasher(hashOptions);
+        return (await hasher
+          .update(padTo32Bytes(NODE_PREFIX))
+          .update(padTo32Bytes(pathItem.siblingHash ? pathItem.siblingHash : 0n))
+          .update(padTo32Bytes(legHash))
+        .digest()).data;
       },
-      hashLeftEmptyBranch(pathItemAsSupertype: PathItem) {
+      async hashLeftEmptyBranch(pathItemAsSupertype: PathItem) {
         const pathItem = pathItemAsSupertype as PathItemEmptyBranch;
-        return hashFunction(
-          padTo32Bytes(NODE_PREFIX), 
-          padTo32Bytes(0n), 
-          padTo32Bytes(pathItem.siblingHash));
+        const hasher = createHasher(hashOptions);
+        return (await hasher
+          .update(padTo32Bytes(NODE_PREFIX))
+          .update(padTo32Bytes(0n))
+          .update(padTo32Bytes(pathItem.siblingHash))
+        .digest()).data;
       },
-      hashRightEmptyBranch(pathItemAsSupertype: PathItem) {
+      async hashRightEmptyBranch(pathItemAsSupertype: PathItem) {
         const pathItem = pathItemAsSupertype as PathItemEmptyBranch;
-        return hashFunction(
-          padTo32Bytes(NODE_PREFIX), 
-          padTo32Bytes(pathItem.siblingHash), 
-          padTo32Bytes(0n));
+        const hasher = createHasher(hashOptions);
+        return (await hasher
+          .update(padTo32Bytes(NODE_PREFIX))
+          .update(padTo32Bytes(pathItem.siblingHash))
+          .update(padTo32Bytes(0n))
+        .digest()).data;
       },
-      hashLeaf(pathItem: PathItem): WordArray {
+      async hashLeaf(pathItem: PathItem): Promise<Uint8Array> {
         const leaf = pathItem as PathItemLeaf;
-        return hashFunction(
-          padTo32Bytes(LEAF_PREFIX), 
-          typeof(leaf.value) == 'string' ? CryptoJS.enc.Utf8.parse(leaf.value) : padTo32Bytes(leaf.value));
+        const hasher = createHasher(hashOptions);
+        return (await hasher
+          .update(padTo32Bytes(LEAF_PREFIX))
+          .update(typeof(leaf.value) == 'string' ? Buffer.from(leaf.value) : padTo32Bytes(leaf.value))
+        .digest()).data;
       },
-      hashLeg (prefix: bigint, childHash: WordArray): WordArray {
-        return hashFunction(
-            padTo32Bytes(LEG_PREFIX), 
-            padTo32Bytes(unpad(prefix, pathPaddingBits)), 
-            padTo32Bytes(childHash));
+      async hashLeg (prefix: bigint, childHash: Uint8Array): Promise<Uint8Array> {
+        const hasher = createHasher(hashOptions);
+        return (await hasher
+            .update(padTo32Bytes(LEG_PREFIX))
+            .update(padTo32Bytes(unpad(prefix, pathPaddingBits)))
+            .update(padTo32Bytes(childHash))
+        .digest()).data;
       }
     };
   }
 }
 
 export interface VerificationContext {
-  beginCalculation(pathItem: PathItem): void;
-  pathItemProcessed(pathItem: PathItem): void;
-  hashLeftNode(pathItem: PathItem, legHash: WordArray): WordArray;
-  hashRightNode(pathItem: PathItem, legHash: WordArray): WordArray;
-  hashLeftEmptyBranch(pathItem: PathItem): WordArray;
-  hashRightEmptyBranch(pathItem: PathItem): WordArray;
-  hashLeaf(pathItem: PathItem): WordArray;
-  hashLeg(prefix: bigint, childHash: WordArray): WordArray;
+  beginCalculation(pathItem: PathItem): Promise<void>;
+  pathItemProcessed(pathItem: PathItem): Promise<void>;
+  hashLeftNode(pathItem: PathItem, legHash: Uint8Array): Promise<Uint8Array>;
+  hashRightNode(pathItem: PathItem, legHash: Uint8Array): Promise<Uint8Array>;
+  hashLeftEmptyBranch(pathItem: PathItem): Promise<Uint8Array>;
+  hashRightEmptyBranch(pathItem: PathItem): Promise<Uint8Array>;
+  hashLeaf(pathItem: PathItem): Promise<Uint8Array>;
+  hashLeg(prefix: bigint, childHash: Uint8Array): Promise<Uint8Array>;
 }
 
 function getDirection(path: bigint): bigint {
@@ -734,31 +751,79 @@ export function unpad(path: bigint, pathLengthBits: bigint | false): bigint {
   return path & ((1n << pathLengthBits) - 1n);
 }
 
-export function padTo32Bytes(value: bigint | WordArray): WordArray {
+export function padTo32Bytes(value: bigint | Uint8Array): Uint8Array {
   return padLeft(value, 32);
 }
 
-function padLeft(value: bigint | WordArray, resultBytesLength: number): WordArray {
-  if (typeof(value) == 'object') {
-    const wordArray = value as WordArray;
-    const paddingByteCount = resultBytesLength - wordArray.sigBytes;
+let skipNegativeValueCheck: boolean = false;
+
+/** For testing only, unsafe! */
+export function setSkipNegativeValueCheck(value: boolean): void {
+  skipNegativeValueCheck = value;
+}
+
+function padLeft(value: bigint | Uint8Array, resultBytesLength: number): Uint8Array {
+  if (resultBytesLength < 0) {
+    throw new Error('resultBytesLength cannot be negative.');
+  }
+
+  if (value instanceof Uint8Array) {
+    const array: Uint8Array = value;
+
+    const currentLength = array.byteLength;
+    const paddingByteCount = resultBytesLength - currentLength;
     if (paddingByteCount < 0) {
       throw new Error(`Input value too long: ${value}`);
     }
 
-    const paddingWordsCount = Math.ceil(paddingByteCount  / 4);
-    const paddingBuffer: number[] = new Array(paddingWordsCount).fill(0);
-    const zeroPadding = CryptoJS.lib.WordArray.create(paddingBuffer, paddingByteCount);
-
-    return zeroPadding.concat(wordArray);
+    const paddedArray = new Uint8Array(resultBytesLength);
+    paddedArray.set(array, paddingByteCount);
+    return paddedArray;
   } else if (typeof(value) == 'bigint') {
+    if (skipNegativeValueCheck && value < 0) {
+      value = (1n << BigInt(resultBytesLength)*8n) + value;
+    }
+    if (value < 0) {
+      throw new Error(`Negative numbers cannot be encoded`);
+    }
     let hexString = value.toString(16);
     const paddingByteCount = resultBytesLength * 2 - hexString.length;
     if (paddingByteCount < 0) {
       throw new Error(`Input value too long: ${value}`);
     }
-    return CryptoJS.enc.Hex.parse('0'.repeat(paddingByteCount) + hexString);
+    return HexConverter.decode('0'.repeat(paddingByteCount) + hexString);
   } else {
     throw new Error(`Unknown type: ${typeof(value)}`);
   }
 }
+
+function uint8ArraysEqual(a: Uint8Array, b: Uint8Array): boolean {
+  if (a === b) {
+    return true;
+  }
+
+  if (a == null || b == null) {
+    return false;
+  }
+
+  if (a.length !== b.length) {
+    return false;
+  }
+
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+export function createHasher(hashOptions: HashOptions) {
+  return hashOptions.dataHasherFactory.create(hashOptions.algorithm);
+}
+
+export type HashOptions = {
+  dataHasherFactory: DataHasherFactory<IDataHasher>;
+  algorithm: HashAlgorithm;
+};

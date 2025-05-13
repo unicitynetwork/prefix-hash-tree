@@ -1,5 +1,7 @@
-import { AbstractTree, LEFT, RIGHT, AbstractLeafNode, LEAF_PREFIX, AbstractInternalNode, NODE_PREFIX, AbstractLeg, AbstractPath, ValidationResult, LEG_PREFIX, VerificationContext, padTo32Bytes, unpad } from './smt.js';
-import { HashFunction, PathItem, WordArray } from './types/index.js';
+import { IDataHasher } from '@unicitylabs/commons/lib/hash/IDataHasher.js';
+import { DataHasherFactory } from '@unicitylabs/commons/lib/hash/DataHasherFactory.js';
+import { AbstractTree, LEFT, RIGHT, AbstractLeafNode, LEAF_PREFIX, AbstractInternalNode, NODE_PREFIX, AbstractLeg, AbstractPath, ValidationResult, LEG_PREFIX, VerificationContext, padTo32Bytes, HashOptions, unpad, createHasher } from './smt.js';
+import { PathItem } from './types/index.js';
 import { SumPathItem } from './types/sumtreeindex.js';
 import { SumPathItemLeaf } from './types/sumtreeindex.js';
 import { SumPathItemEmptyBranch } from './types/sumtreeindex.js';
@@ -7,79 +9,80 @@ import { SumPathItemInternalNodeHashed } from './types/sumtreeindex.js';
 import { SumPathItemInternalNode } from './types/sumtreeindex.js';
 import { SumPathItemRoot } from './types/sumtreeindex.js';
 import { SumLeaf } from './types/sumtreeindex.js';
+import { HashAlgorithm } from '@unicitylabs/commons/lib/hash/HashAlgorithm.js';
 
-import CryptoJS from 'crypto-js';
+
 
 export class SumTree extends AbstractTree<SumInternalNode, SumLeafNode, SumLeaf, SumLeg, SumPathItem, SumPathItemRoot,
     SumPathItemInternalNode, SumPathItemInternalNodeHashed, SumPathItemLeaf, SumPathItemEmptyBranch, 
     SumPath> 
 {
-  public constructor(hashFunction: HashFunction, leavesByPath: Map<bigint, SumLeaf>, pathLengthInBits: bigint | false | undefined = undefined) {
-    super(hashFunction, leavesByPath, pathLengthInBits);
+  public constructor(dataHasherFactory: DataHasherFactory<IDataHasher>, hashAlgorithm: HashAlgorithm, leavesByPath: Map<bigint, SumLeaf>, pathLengthInBits: bigint | false | undefined = undefined) {
+    super(dataHasherFactory, hashAlgorithm, leavesByPath, pathLengthInBits);
   }
 
-  public getRootSum(): bigint {
-    return this.root.getSum();
+  public async getRootSum(): Promise<bigint> {
+    return await this.root.getSum();
   }
   
   override createPath(pathItems: SumPathItem[]): SumPath {
-    return new SumPath(pathItems, this.hashFunction, this.pathPaddingBits);
+    return new SumPath(pathItems, this.hashOptions, this.pathPaddingBits);
   }
 
-  override createPathForEmptyTree(): SumPath {
+  override async createPathForEmptyTree(): Promise<SumPath> {
     return new SumPath(
-      [{ type: 'sumRoot', rootHash: this.getRootHash(), sum: 0n } as SumPathItemRoot],
-      this.hashFunction,
+      [{ type: 'sumRoot', rootHash: await this.getRootHash(), sum: 0n } as SumPathItemRoot],
+      this.hashOptions,
       this.pathPaddingBits);
   }
 
   override createNewLeaf(leaf: SumLeaf): SumLeafNode {
-    return new SumLeafNode(this.hashFunction, leaf.value, leaf.numericValue);
+    return new SumLeafNode(this.hashOptions, leaf.value, leaf.numericValue);
   }
 
-  override createPathItemRoot(): SumPathItemRoot {
-    return { type: 'sumRoot', rootHash: this.root.getHash(), sum: this.root.getSum() };
+  override async createPathItemRoot(): Promise<SumPathItemRoot> {
+    return { type: 'sumRoot', rootHash: await this.root.getHash(), sum: await this.root.getSum() };
   }
 
   override createInternalNode(): SumInternalNode {
-    return new SumInternalNode(this.hashFunction);
+    return new SumInternalNode(this.hashOptions);
   }
 
-  override createEmptyLeftBranchPathItem(node: SumInternalNode): SumPathItemEmptyBranch {
-    return { type: 'sumEmptyBranch', direction: LEFT, siblingHash: node.right!.getHash(), siblingSum: node.right!.getSum() };
+  override async createEmptyLeftBranchPathItem(node: SumInternalNode): Promise<SumPathItemEmptyBranch> {
+    return { type: 'sumEmptyBranch', direction: LEFT, siblingHash: await node.right!.getHash(), siblingSum: await node.right!.getSum() };
   }
 
-  override createEmptyRightBranchPathItem(node: SumInternalNode): SumPathItemEmptyBranch {
-    return { type: 'sumEmptyBranch', direction: RIGHT, siblingHash: node.left!.getHash(), siblingSum: node.left!.getSum() };
+  override async createEmptyRightBranchPathItem(node: SumInternalNode): Promise<SumPathItemEmptyBranch> {
+    return { type: 'sumEmptyBranch', direction: RIGHT, siblingHash: await node.left!.getHash(), siblingSum: await node.left!.getSum() };
   }
 
   override createPathItemInternalNode(prefix: bigint): SumPathItemInternalNode {
     return { type: 'sumInternalNode', prefix, siblingHash: undefined, siblingSum: undefined };
   }
 
-  override createPathItemInternalNodeHashed(node: SumInternalNode): SumPathItemInternalNodeHashed {
-    return { type: 'sumInternalNodeHashed', nodeHash: node.getHash(), sum: node.getSum() };
+  override async createPathItemInternalNodeHashed(node: SumInternalNode): Promise<SumPathItemInternalNodeHashed> {
+    return { type: 'sumInternalNodeHashed', nodeHash: await node.getHash(), sum: await node.getSum() };
   }
 
-  override createPathItemLeafNode(leaf: SumLeafNode): SumPathItemLeaf {
-    return { type: 'sumLeaf', value: leaf.getValue(), numericValue: leaf.getSum() };
+  override async createPathItemLeafNode(leaf: SumLeafNode): Promise<SumPathItemLeaf> {
+    return { type: 'sumLeaf', value: leaf.getValue(), numericValue: await leaf.getSum() };
   }
 
-  override addSiblingDataToLeft(untypedPathItem: PathItem, node: SumInternalNode): void {
+  override async addSiblingDataToLeft(untypedPathItem: PathItem, node: SumInternalNode): Promise<void> {
     const pathItem = untypedPathItem as SumPathItemInternalNode;
-    pathItem.siblingHash = node.right ? node.right.getHash() : undefined;
-    pathItem.siblingSum = node.right ? node.right.getSum() : undefined;
+    pathItem.siblingHash = node.right ? await node.right.getHash() : undefined;
+    pathItem.siblingSum = node.right ? await node.right.getSum() : undefined;
   }
 
-  override addSiblingDataToRight(untypedPathItem: PathItem, node: SumInternalNode): void {
+  override async addSiblingDataToRight(untypedPathItem: PathItem, node: SumInternalNode): Promise<void> {
     const pathItem = untypedPathItem as SumPathItemInternalNode;
-    pathItem.siblingHash = node.left ? node.left.getHash() : undefined;
-    pathItem.siblingSum = node.left ? node.left.getSum() : undefined;
+    pathItem.siblingHash = node.left ? await node.left.getHash() : undefined;
+    pathItem.siblingSum = node.left ? await node.left.getSum() : undefined;
   }
 
   override createLeg(remainingPath: bigint, child: SumLeafNode | SumInternalNode): SumLeg {
     return new SumLeg(
-      this.hashFunction,
+      this.hashOptions,
       remainingPath,
       child,
       this.pathPaddingBits);
@@ -88,45 +91,54 @@ export class SumTree extends AbstractTree<SumInternalNode, SumLeafNode, SumLeaf,
 export class SumLeafNode extends AbstractLeafNode<SumLeafNode, SumInternalNode, SumLeg> {
   public readonly numericValue: bigint;
 
-  constructor(
-    hashFunction: HashFunction,
-    value: string | WordArray,
+  constructor (
+    hashOptions: HashOptions,
+    value: string | Uint8Array,
     numericValue: bigint
   ) {
-    super(hashFunction, value);
+    super(hashOptions, value);
     this.numericValue = numericValue;
   }
 
-  override getHash(): WordArray {
-    return this.hashFunction(
-      padTo32Bytes(LEAF_PREFIX), 
-      typeof(this.value) == 'string' ? CryptoJS.enc.Utf8.parse(this.value) : padTo32Bytes(this.value),
-      padTo32Bytes(this.numericValue));
+  override async getHash(): Promise<Uint8Array> {
+    const hasher = createHasher(this.hashOptions);
+    return (await hasher
+      .update(padTo32Bytes(LEAF_PREFIX))
+      .update(typeof(this.value) == 'string' ? Buffer.from(this.value) : padTo32Bytes(this.value))
+      .update(padTo32Bytes(this.numericValue))
+      .digest()).data;
   }
 
-  public getSum(): bigint {
+  public async getSum(): Promise<bigint> {
     return this.numericValue;
   }
 }
 
 export class SumInternalNode extends AbstractInternalNode<SumLeafNode, SumInternalNode, SumLeg> {
-  constructor(hashFunction: HashFunction) {
-    super(hashFunction);
+  constructor(hashOptions: HashOptions) {
+    super(hashOptions);
   }
 
-  override getHash(): WordArray {
-    const leftHash = this.left ? this.left.getHash() : 0n;
-    const rightHash = this.right ? this.right.getHash() : 0n;
+  override async getHash(): Promise<Uint8Array> {
+    const leftHash = this.left ? await this.left.getHash() : 0n;
+    const rightHash = this.right ? await this.right.getHash() : 0n;
 
-    const leftSum = this.left ? this.left.getSum() : 0n;
-    const rightSum = this.right ? this.right.getSum() : 0n;
+    const leftSum = this.left ? await this.left.getSum() : 0n;
+    const rightSum = this.right ? await this.right.getSum() : 0n;
 
-    return this.hashFunction(padTo32Bytes(NODE_PREFIX), padTo32Bytes(leftHash), padTo32Bytes(rightHash), padTo32Bytes(leftSum), padTo32Bytes(rightSum));
+    const hasher = createHasher(this.hashOptions);
+    return (await hasher
+      .update(padTo32Bytes(NODE_PREFIX))
+      .update(padTo32Bytes(leftHash))
+      .update(padTo32Bytes(rightHash))
+      .update(padTo32Bytes(leftSum))
+      .update(padTo32Bytes(rightSum))
+      .digest()).data;
   }
 
-  public getSum(): bigint {
-    const leftSum = this.left ? this.left.getSum() : 0n;
-    const rightSum = this.right ? this.right.getSum() : 0n;
+  public async getSum(): Promise<bigint> {
+    const leftSum = this.left ? await this.left.getSum() : 0n;
+    const rightSum = this.right ? await this.right.getSum() : 0n;
     return leftSum + rightSum;
   }
 }
@@ -134,19 +146,19 @@ export class SumInternalNode extends AbstractInternalNode<SumLeafNode, SumIntern
 export class SumLeg extends AbstractLeg<SumLeafNode, SumInternalNode, SumLeg> {
   private sum: bigint | null = null;
 
-  public constructor(hashFunction: HashFunction, prefix: bigint, node: SumLeafNode | SumInternalNode, pathPaddingBits: bigint | false) {
-    super(hashFunction, prefix, node, pathPaddingBits);
+  public constructor(hashOptions: HashOptions, prefix: bigint, node: SumLeafNode | SumInternalNode, pathPaddingBits: bigint | false) {
+    super(hashOptions, prefix, node, pathPaddingBits);
   }
 
-  override recalculateIfOutdated() {
+  override async recalculateIfOutdated() {
     if (this.outdated) {
-      this.sum = this.child.getSum();
+      this.sum = await this.child.getSum();
     }
-    super.recalculateIfOutdated();
+    await super.recalculateIfOutdated();
   }
 
-  public getSum(): bigint {
-    this.recalculateIfOutdated();
+  public async getSum(): Promise<bigint> {
+    await this.recalculateIfOutdated();
     return this.sum!;
   }
 }
@@ -169,15 +181,15 @@ export class SumPath extends AbstractPath<SumPathItem, SumPathItemRoot, SumPathI
     return (this.path[0] as SumPathItemRoot).sum;
   }
 
-  override verifyPath(): ValidationResult {
+  override async verifyPath(): Promise<ValidationResult> {
     if (!this.allNumericValuesOnPathArePositiveOrZero()) {
       return {success: false, error: 'Negative numeric values are not allowed on any part of the path'};
     }
 
-    return super.verifyPath();
+    return await super.verifyPath();
   }
 
-  private allNumericValuesOnPathArePositiveOrZero(): boolean {
+  protected allNumericValuesOnPathArePositiveOrZero(): boolean {
     for(const pathItem of this.path) {
       if(pathItem.type == 'sumRoot') {
         if (pathItem.sum < 0) {
@@ -220,15 +232,15 @@ export class SumPath extends AbstractPath<SumPathItem, SumPathItemRoot, SumPathI
     return 'type' in pathItem && pathItem.type == 'sumInternalNodeHashed';
   }
 
-  override getNodeHashFromInternalNodeHashed(pathItem: PathItem): WordArray {
-    return (pathItem as SumPathItemInternalNodeHashed).nodeHash as WordArray;
+  override getNodeHashFromInternalNodeHashed(pathItem: PathItem): Uint8Array {
+    return (pathItem as SumPathItemInternalNodeHashed).nodeHash as Uint8Array;
   }
 
-  override createVerificationContext(hashFunction: HashFunction): VerificationContext {
+  override createVerificationContext(hashOptions: HashOptions): VerificationContext {
     const pathPaddingBits = this.pathPaddingBits;
     let sumSoFar: bigint = 0n;
     return {
-      beginCalculation(pathItem: PathItem): void {
+      async beginCalculation(pathItem: PathItem): Promise<void> {
         if ('type' in pathItem && pathItem.type == 'sumLeaf') {
           sumSoFar = (pathItem as SumPathItemLeaf).numericValue;
         } else if ('type' in pathItem && pathItem.type == 'sumInternalNodeHashed') {
@@ -239,7 +251,7 @@ export class SumPath extends AbstractPath<SumPathItem, SumPathItemRoot, SumPathI
           throw new Error(`Unsupported PathItem type`);
         }
       },
-      pathItemProcessed(pathItemAsSupertype: PathItem): void {
+      async pathItemProcessed(pathItemAsSupertype: PathItem): Promise<void> {
         if (!(('type' in pathItemAsSupertype) && (pathItemAsSupertype.type == 'sumInternalNode'))) {
           throw new Error('Unsupported PathItem type');
         }
@@ -247,56 +259,66 @@ export class SumPath extends AbstractPath<SumPathItem, SumPathItemRoot, SumPathI
 
         sumSoFar += pathItem.siblingSum ? pathItem.siblingSum : 0n;
       },
-      hashLeftNode(pathItemAsSupertype: PathItem, legHash: WordArray): WordArray {
+      async hashLeftNode(pathItemAsSupertype: PathItem, legHash: Uint8Array): Promise<Uint8Array> {
         const pathItem = pathItemAsSupertype as SumPathItemInternalNode;
-        return hashFunction(
-          padTo32Bytes(NODE_PREFIX),
-          padTo32Bytes(legHash),
-          padTo32Bytes(pathItem.siblingHash ? pathItem.siblingHash : 0n),
-          padTo32Bytes(sumSoFar),
-          padTo32Bytes(pathItem.siblingSum ? pathItem.siblingSum : 0n)
-        );
+        const hasher = createHasher(hashOptions);
+        return (await hasher
+          .update(padTo32Bytes(NODE_PREFIX))
+          .update(padTo32Bytes(legHash))
+          .update(padTo32Bytes(pathItem.siblingHash ? pathItem.siblingHash : 0n))
+          .update(padTo32Bytes(sumSoFar))
+          .update(padTo32Bytes(pathItem.siblingSum ? pathItem.siblingSum : 0n))
+          .digest()).data;
       },
-      hashRightNode(pathItemAsSupertype: PathItem, legHash: WordArray): WordArray {
+      async hashRightNode(pathItemAsSupertype: PathItem, legHash: Uint8Array): Promise<Uint8Array> {
         const pathItem = pathItemAsSupertype as SumPathItemInternalNode;
-        return hashFunction(
-          padTo32Bytes(NODE_PREFIX),
-          padTo32Bytes(pathItem.siblingHash ? pathItem.siblingHash : 0n),
-          padTo32Bytes(legHash),
-          padTo32Bytes(pathItem.siblingSum ? pathItem.siblingSum : 0n),
-          padTo32Bytes(sumSoFar)
-        );
+        const hasher = createHasher(hashOptions);
+        return (await hasher
+          .update(padTo32Bytes(NODE_PREFIX))
+          .update(padTo32Bytes(pathItem.siblingHash ? pathItem.siblingHash : 0n))
+          .update(padTo32Bytes(legHash))
+          .update(padTo32Bytes(pathItem.siblingSum ? pathItem.siblingSum : 0n))
+          .update(padTo32Bytes(sumSoFar))
+          .digest()).data;
       },
-      hashLeftEmptyBranch(pathItemAsSupertype: PathItem): WordArray {
+      async hashLeftEmptyBranch(pathItemAsSupertype: PathItem): Promise<Uint8Array> {
         const pathItem = pathItemAsSupertype as SumPathItemEmptyBranch;
-        return hashFunction(
-          padTo32Bytes(NODE_PREFIX),
-          padTo32Bytes(0n),
-          padTo32Bytes(pathItem.siblingHash),
-          padTo32Bytes(0n),
-          padTo32Bytes(pathItem.siblingSum));
+        const hasher = createHasher(hashOptions);
+        return (await hasher
+          .update(padTo32Bytes(NODE_PREFIX))
+          .update(padTo32Bytes(0n))
+          .update(padTo32Bytes(pathItem.siblingHash))
+          .update(padTo32Bytes(0n))
+          .update(padTo32Bytes(pathItem.siblingSum))
+          .digest()).data;
       },
-      hashRightEmptyBranch(pathItemAsSupertype: PathItem): WordArray {
+      async hashRightEmptyBranch(pathItemAsSupertype: PathItem): Promise<Uint8Array> {
         const pathItem = pathItemAsSupertype as SumPathItemEmptyBranch;
-        return hashFunction(
-          padTo32Bytes(NODE_PREFIX),
-          padTo32Bytes(pathItem.siblingHash),
-          padTo32Bytes(0n),
-          padTo32Bytes(pathItem.siblingSum),
-          padTo32Bytes(0n));
+        const hasher = createHasher(hashOptions);
+        return (await hasher
+          .update(padTo32Bytes(NODE_PREFIX))
+          .update(padTo32Bytes(pathItem.siblingHash))
+          .update(padTo32Bytes(0n))
+          .update(padTo32Bytes(pathItem.siblingSum))
+          .update(padTo32Bytes(0n))
+          .digest()).data;
       },
-      hashLeaf(pathItem: PathItem): WordArray {
+      async hashLeaf(pathItem: PathItem): Promise<Uint8Array> {
         const leaf = pathItem as SumPathItemLeaf;
-        return hashFunction(
-          padTo32Bytes(LEAF_PREFIX),
-          typeof(leaf.value) == 'string' ? CryptoJS.enc.Utf8.parse(leaf.value) : padTo32Bytes(leaf.value),
-          padTo32Bytes(leaf.numericValue));
+        const hasher = createHasher(hashOptions);
+        return (await hasher
+          .update(padTo32Bytes(LEAF_PREFIX))
+          .update(typeof(leaf.value) == 'string' ? Buffer.from(leaf.value) : padTo32Bytes(leaf.value))
+          .update(padTo32Bytes(leaf.numericValue))
+          .digest()).data;
       },
-      hashLeg(prefix: bigint, childHash: WordArray): WordArray {
-        return hashFunction(
-          padTo32Bytes(LEG_PREFIX), 
-          padTo32Bytes(unpad(prefix, pathPaddingBits)), 
-          padTo32Bytes(childHash));
+      async hashLeg(prefix: bigint, childHash: Uint8Array): Promise<Uint8Array> {
+        const hasher = createHasher(hashOptions);
+        return (await hasher
+          .update(padTo32Bytes(LEG_PREFIX))
+          .update(padTo32Bytes(unpad(prefix, pathPaddingBits)))
+          .update(padTo32Bytes(childHash))
+          .digest()).data;
       }
     };
   }

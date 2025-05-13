@@ -1,35 +1,29 @@
-import CryptoJS from 'crypto-js';
-
-export type WordArray = CryptoJS.WordArray;
-
-export type HashFunction = (...inputs: (WordArray)[]) => WordArray;
-
 export interface Leaf {
-  value: string | WordArray;
+  value: string | Uint8Array;
 }
 
 export interface PathItem {}
 
 export interface AbstractPathItemRoot extends PathItem {
-  rootHash: WordArray;
+  rootHash: Uint8Array;
 }
 
 export interface AbstractPathItemInternalNode extends PathItem {
   prefix: bigint;
-  siblingHash: WordArray | undefined;
+  siblingHash: Uint8Array | undefined;
 }
 
 export interface AbstractPathItemInternalNodeHashed extends PathItem {
-  nodeHash: WordArray;
+  nodeHash: Uint8Array;
 }
 
 export interface AbstractPathItemEmptyBranch extends PathItem {
   direction: bigint;
-  siblingHash: WordArray;
+  siblingHash: Uint8Array;
 }
 
 export interface AbstractPathItemLeaf extends PathItem {
-  value: string | WordArray;
+  value: string | Uint8Array;
 }
 
 export interface PrefixSplit extends PathItem {

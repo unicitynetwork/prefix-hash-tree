@@ -1,5 +1,5 @@
-import { Leaf, PathItem, AbstractPathItemRoot, AbstractPathItemInternalNode, AbstractPathItemInternalNodeHashed, 
-  AbstractPathItemEmptyBranch, AbstractPathItemLeaf, WordArray } from './index.js';
+import { Leaf, AbstractPathItemRoot, AbstractPathItemInternalNode, AbstractPathItemInternalNodeHashed, 
+  AbstractPathItemEmptyBranch, AbstractPathItemLeaf } from './index.js';
 
 
 export interface SumLeaf extends Leaf {
