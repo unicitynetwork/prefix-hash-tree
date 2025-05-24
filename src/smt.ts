@@ -1,12 +1,20 @@
 import { Leaf, PathItem, PathItemRoot, PathItemInternalNode,
   PathItemInternalNodeHashed, PathItemEmptyBranch, PathItemLeaf, 
   AbstractPathItemRoot, AbstractPathItemInternalNode,
-  AbstractPathItemInternalNodeHashed, AbstractPathItemEmptyBranch, AbstractPathItemLeaf } from './types/index.js';
+  AbstractPathItemInternalNodeHashed, AbstractPathItemEmptyBranch, AbstractPathItemLeaf,
+  AnyPathItemJson,
+  IPathJson,
+  IPathItemEmptyBranchJson,
+  IPathItemInternalNodeHashedJson,
+  IPathItemInternalNodeJson,
+  IPathItemLeafJson,
+  IPathItemRootJson} from './types/index.js';
 
 import { IDataHasher } from '@unicitylabs/commons/lib/hash/IDataHasher.js';
 import { DataHasherFactory } from '@unicitylabs/commons/lib/hash/DataHasherFactory.js';
 import { HashAlgorithm } from '@unicitylabs/commons/lib/hash/HashAlgorithm.js';
 import { HexConverter } from '@unicitylabs/commons/lib/util/HexConverter.js';
+import { CborEncoder } from '@unicitylabs/commons/lib/cbor/CborEncoder.js';
 
 export const LEFT: bigint = 0n;
 export const RIGHT: bigint = 1n;
@@ -591,6 +599,10 @@ export abstract class AbstractPath<
   protected abstract getNodeHashFromInternalNodeHashed(pathItem: PathItemType): Uint8Array;
 
   protected abstract createVerificationContext(hashOptions: HashOptions): VerificationContext;
+
+  public abstract toCBOR(): Uint8Array;
+
+  public abstract toJSON(): object;
 }
 
 export class Path extends AbstractPath<PathItem, PathItemRoot, PathItemInternalNode, PathItemEmptyBranch, PathItemLeaf> {
@@ -669,6 +681,219 @@ export class Path extends AbstractPath<PathItem, PathItemRoot, PathItemInternalN
             .update(padTo32Bytes(childHash))
         .digest()).data;
       }
+    };
+  }
+
+  public toCBOR(): Uint8Array {
+    const encodedPathItems: Uint8Array[] = this.path.map(item => {
+      let itemPayloadEncodedElements: Uint8Array[];
+
+      const concreteItem = item as (PathItemRoot | PathItemInternalNode | PathItemInternalNodeHashed | PathItemEmptyBranch | PathItemLeaf);
+
+      switch (concreteItem.type) {
+        case 'root': 
+          itemPayloadEncodedElements = [
+            CborEncoder.encodeTextString(concreteItem.type),
+            CborEncoder.encodeByteString(concreteItem.rootHash),
+          ];
+          break;
+        case 'internalNode':
+          itemPayloadEncodedElements = [
+            CborEncoder.encodeTextString(concreteItem.type),
+            CborEncoder.encodeUnsignedInteger(concreteItem.prefix),
+            CborEncoder.encodeOptional(concreteItem.siblingHash, CborEncoder.encodeByteString),
+          ];
+          break;
+        case 'internalNodeHashed': 
+          itemPayloadEncodedElements = [
+            CborEncoder.encodeTextString(concreteItem.type),
+            CborEncoder.encodeByteString(concreteItem.nodeHash),
+          ];
+          break;
+        case 'emptyBranch':
+          itemPayloadEncodedElements = [
+            CborEncoder.encodeTextString(concreteItem.type),
+            CborEncoder.encodeUnsignedInteger(concreteItem.direction),
+            CborEncoder.encodeByteString(concreteItem.siblingHash),
+          ];
+          break;
+        case 'leaf':
+          const encodedValue = typeof concreteItem.value === 'string'
+            ? CborEncoder.encodeTextString(concreteItem.value)
+            : CborEncoder.encodeByteString(concreteItem.value as Uint8Array);
+          
+          itemPayloadEncodedElements = [
+            CborEncoder.encodeTextString(concreteItem.type),
+            encodedValue,
+          ];
+          break;
+        default:
+          const _exhaustiveCheck: never = concreteItem;
+          throw new Error(`Unknown PathItem type encountered during CBOR encoding: ${(_exhaustiveCheck as any).type}`);
+      }
+      return CborEncoder.encodeArray(itemPayloadEncodedElements);
+    });
+
+    return CborEncoder.encodeArray(encodedPathItems);
+  }
+
+  public static isJSON(data: unknown): data is IPathJson {
+    if (typeof data !== 'object' || data === null) {
+      return false;
+    }
+
+    const obj = data as IPathJson;
+
+    if (!('pathPaddingBits' in obj && (typeof obj.pathPaddingBits === 'string' || obj.pathPaddingBits === false))) {
+      return false;
+    }
+
+    if (!('items' in obj && Array.isArray(obj.items))) {
+      return false;
+    }
+
+    for (const item of obj.items) {
+      if (typeof item !== 'object' || item === null || typeof item.type !== 'string') {
+        return false;
+      }
+      switch (item.type) {
+        case 'root':
+          if (!(typeof (item as IPathItemRootJson).rootHash === 'string')) return false;
+          break;
+        case 'internalNode':
+          const internalNode = item as IPathItemInternalNodeJson;
+          if (!(typeof internalNode.prefix === 'string')) return false;
+          if (internalNode.siblingHash !== undefined && typeof internalNode.siblingHash !== 'string') return false;
+          break;
+        case 'internalNodeHashed':
+          if (!(typeof (item as IPathItemInternalNodeHashedJson).nodeHash === 'string')) return false;
+          break;
+        case 'emptyBranch':
+          const emptyBranch = item as IPathItemEmptyBranchJson;
+          if (!(typeof emptyBranch.direction === 'string' && typeof emptyBranch.siblingHash === 'string')) return false;
+          break;
+        case 'leaf':
+          if (!(typeof (item as IPathItemLeafJson).value === 'string')) return false;
+          if (!(typeof (item as IPathItemLeafJson).valueType === 'string')) return false;
+          break;
+        default:
+          return false;
+      }
+    }
+    return true;
+  }
+
+  public static fromJSON(data: unknown, hashOptions: HashOptions): Path {
+    if (!Path.isJSON(data)) {
+      throw new Error('Invalid JSON data for Path object.');
+    }
+
+    const pathPaddingBits = data.pathPaddingBits === false ? false : BigInt(data.pathPaddingBits);
+
+    const reconstructedPathItems: PathItem[] = data.items.map((jsonItem: AnyPathItemJson) => {
+      switch (jsonItem.type) {
+        case 'root':
+          return {
+            type: 'root',
+            rootHash: HexConverter.decode(jsonItem.rootHash),
+          } as PathItemRoot;
+        case 'internalNode':
+          return {
+            type: 'internalNode',
+            prefix: BigInt(jsonItem.prefix),
+            siblingHash: jsonItem.siblingHash ? HexConverter.decode(jsonItem.siblingHash) : undefined,
+          } as PathItemInternalNode;
+        case 'internalNodeHashed':
+          return {
+            type: 'internalNodeHashed',
+            nodeHash: HexConverter.decode(jsonItem.nodeHash),
+          } as PathItemInternalNodeHashed;
+        case 'emptyBranch':
+          return {
+            type: 'emptyBranch',
+            direction: BigInt(jsonItem.direction),
+            siblingHash: HexConverter.decode(jsonItem.siblingHash),
+          } as PathItemEmptyBranch;
+        case 'leaf':
+          let valueResult: string | Uint8Array;
+          if (jsonItem.valueType === 'string') {
+            valueResult = jsonItem.value;
+          } else if (jsonItem.valueType === 'Uint8Array') {
+            valueResult = HexConverter.decode(jsonItem.value);
+          } else {
+            throw new Error(`Unknown value type: ${jsonItem.valueType}`);
+          }
+          return {
+            type: 'leaf',
+            value: valueResult
+          } as PathItemLeaf;
+        default:
+          const exhaustiveCheck: never = jsonItem;
+          throw new Error(`Invalid item type in Path JSON data during reconstruction: ${(exhaustiveCheck as any).type}`);
+      }
+    });
+
+    return new Path(reconstructedPathItems, hashOptions, pathPaddingBits);
+  }
+  
+  public toJSON(): IPathJson {
+    const jsonItems: AnyPathItemJson[] = this.path.map(item => {
+      const concreteItem = item as (PathItemRoot | PathItemInternalNode | PathItemInternalNodeHashed | PathItemEmptyBranch | PathItemLeaf);
+      
+      let itemAsJson: any;
+
+      switch (concreteItem.type) {
+        case 'root':
+          itemAsJson = {
+            type: concreteItem.type,
+            rootHash: HexConverter.encode(concreteItem.rootHash),
+          };
+          break;
+        case 'internalNode':
+          itemAsJson = {
+            type: concreteItem.type,
+            prefix: concreteItem.prefix.toString(),
+          };
+          if (concreteItem.siblingHash !== undefined) {
+            itemAsJson.siblingHash = HexConverter.encode(concreteItem.siblingHash);
+          }
+          break;
+        case 'internalNodeHashed':
+          itemAsJson = {
+            type: concreteItem.type,
+            nodeHash: HexConverter.encode(concreteItem.nodeHash),
+          };
+          break;
+        case 'emptyBranch':
+          itemAsJson = {
+            type: concreteItem.type,
+            direction: concreteItem.direction.toString(),
+            siblingHash: HexConverter.encode(concreteItem.siblingHash),
+          };
+          break;
+        case 'leaf':
+          itemAsJson = {
+            type: concreteItem.type,
+            value: typeof concreteItem.value === 'string'
+              ? concreteItem.value
+              : HexConverter.encode(concreteItem.value as Uint8Array),
+            valueType: typeof concreteItem.value === 'string'
+              ? 'string'
+              : 'Uint8Array'
+          };
+          break;
+        default:
+          const _exhaustiveCheck: never = concreteItem;
+          throw new Error(`Unknown PathItem type encountered during toJSON serialization: ${(_exhaustiveCheck as any).type}`);
+      }
+      return itemAsJson as AnyPathItemJson;
+    });
+
+    return {
+      pathPaddingBits: typeof this.pathPaddingBits === 'bigint' 
+        ? this.pathPaddingBits.toString() 
+        : this.pathPaddingBits,
+      items: jsonItems,
     };
   }
 }

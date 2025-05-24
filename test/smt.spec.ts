@@ -1,6 +1,6 @@
 import { assert } from 'chai';
 
-import { Leaf, SMT, SumTree, getCommonPathBits, splitPrefix, padAndValidatePath, unpad, Path } from '../src/index.js';
+import { Leaf, SMT, SumTree, getCommonPathBits, splitPrefix, padAndValidatePath, unpad, Path, SumPath } from '../src/index.js';
 import { padTo32Bytes } from '../src/smt.js';
 
 import { DataHasherFactory } from '@unicitylabs/commons/lib/hash/DataHasherFactory.js';
@@ -10,6 +10,8 @@ import { sha256 } from './utils.js';
 import { HashAlgorithm } from '@unicitylabs/commons/lib/hash/HashAlgorithm.js';
 
 type Tree = SMT | SumTree;
+
+const hashingOptions = { dataHasherFactory: new DataHasherFactory(NodeDataHasher), algorithm: HashAlgorithm.SHA256 };
 
 async function checkPaths(
   smt: Tree, 
@@ -251,6 +253,27 @@ testConfigs.forEach((config) => {
             });  
           });
         }
+
+        it ('toJSON and fromJSON', async function() {
+          const path = await smt.getProof(0b111101111n)
+          assert.isTrue((await path.verifyPath()).success);
+
+          const json = path.toJSON();
+          const deserialized = 
+              (path instanceof Path) ? 
+                  Path.fromJSON(json, hashingOptions) : 
+              (path instanceof SumPath) ?
+                  SumPath.fromJSON(json, hashingOptions) :
+              (() => { throw new Error(`Unsupported type.`); })();
+
+          assert.isTrue((await deserialized.verifyPath()).success);
+          
+          const bigintToStringReplacer: ((this: any, key: string, value: any) => any) | undefined = (_, v) => typeof v === 'bigint' ? v.toString() : v;
+
+          assert.equal(
+              JSON.stringify(path.getItems(), bigintToStringReplacer),
+              JSON.stringify(deserialized.getItems(), bigintToStringReplacer));
+        });
       });
     }
   });
@@ -347,7 +370,7 @@ describe('Utility functions', function() {
     assert.equal(
       new Path(
         [ {type: 'root', rootHash: 9} ], 
-        { dataHasherFactory: new DataHasherFactory(NodeDataHasher), algorithm: HashAlgorithm.SHA256}, 
+        hashingOptions, 
         false
       ).getPaddedLocation(), 
       0b1n);
@@ -360,7 +383,7 @@ describe('Utility functions', function() {
             {type: 'internalNode', prefix: 0b0n, siblingHash: 9},
             {type: 'leaf', value: 'v'}
           ], 
-          { dataHasherFactory: new DataHasherFactory(NodeDataHasher), algorithm: HashAlgorithm.SHA256}, 
+          hashingOptions, 
           false
         ).getPaddedLocation()
       }, 

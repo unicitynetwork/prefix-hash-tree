@@ -2,7 +2,7 @@ import { IDataHasher } from '@unicitylabs/commons/lib/hash/IDataHasher.js';
 import { DataHasherFactory } from '@unicitylabs/commons/lib/hash/DataHasherFactory.js';
 import { AbstractTree, LEFT, RIGHT, AbstractLeafNode, LEAF_PREFIX, AbstractInternalNode, NODE_PREFIX, AbstractLeg, AbstractPath, ValidationResult, LEG_PREFIX, VerificationContext, padTo32Bytes, HashOptions, unpad, createHasher } from './smt.js';
 import { PathItem } from './types/index.js';
-import { SumPathItem } from './types/sumtreeindex.js';
+import { AnySumPathItemJson, ISumPathItemEmptyBranchJson, ISumPathItemInternalNodeHashedJson, ISumPathItemInternalNodeJson, ISumPathItemLeafJson, ISumPathItemRootJson, ISumPathJson, SumPathItem } from './types/sumtreeindex.js';
 import { SumPathItemLeaf } from './types/sumtreeindex.js';
 import { SumPathItemEmptyBranch } from './types/sumtreeindex.js';
 import { SumPathItemInternalNodeHashed } from './types/sumtreeindex.js';
@@ -10,6 +10,8 @@ import { SumPathItemInternalNode } from './types/sumtreeindex.js';
 import { SumPathItemRoot } from './types/sumtreeindex.js';
 import { SumLeaf } from './types/sumtreeindex.js';
 import { HashAlgorithm } from '@unicitylabs/commons/lib/hash/HashAlgorithm.js';
+import { CborEncoder } from '@unicitylabs/commons/lib/cbor/CborEncoder.js';
+import { HexConverter } from '@unicitylabs/commons/lib/util/HexConverter.js';
 
 
 
@@ -321,6 +323,239 @@ export class SumPath extends AbstractPath<SumPathItem, SumPathItemRoot, SumPathI
           .digest()).data;
       }
     };
+  }
+
+  public toCBOR(): Uint8Array {
+    const encodedPathItems: Uint8Array[] = this.path.map(item => {
+      let itemPayloadEncodedElements: Uint8Array[];
+
+      switch (item.type) {
+        case 'sumRoot':
+          itemPayloadEncodedElements = [
+            CborEncoder.encodeTextString(item.type),
+            CborEncoder.encodeByteString(item.rootHash),
+            CborEncoder.encodeUnsignedInteger(item.sum),
+          ];
+          break;
+        case 'sumInternalNode':
+          itemPayloadEncodedElements = [
+            CborEncoder.encodeTextString(item.type),
+            CborEncoder.encodeUnsignedInteger(item.prefix),
+            CborEncoder.encodeOptional(item.siblingHash, CborEncoder.encodeByteString),
+            CborEncoder.encodeOptional(item.siblingSum, CborEncoder.encodeUnsignedInteger),
+          ];
+          break;
+        case 'sumInternalNodeHashed':
+          itemPayloadEncodedElements = [
+            CborEncoder.encodeTextString(item.type),
+            CborEncoder.encodeByteString(item.nodeHash),
+            CborEncoder.encodeUnsignedInteger(item.sum),
+          ];
+          break;
+        case 'sumEmptyBranch':
+          itemPayloadEncodedElements = [
+            CborEncoder.encodeTextString(item.type),
+            CborEncoder.encodeUnsignedInteger(item.direction),
+            CborEncoder.encodeByteString(item.siblingHash),
+            CborEncoder.encodeUnsignedInteger(item.siblingSum),
+          ];
+          break;
+        case 'sumLeaf':
+          const encodedValue = typeof item.value === 'string'
+            ? CborEncoder.encodeTextString(item.value)
+            : CborEncoder.encodeByteString(item.value as Uint8Array);
+          
+          itemPayloadEncodedElements = [
+            CborEncoder.encodeTextString(item.type),
+            encodedValue,
+            CborEncoder.encodeUnsignedInteger(item.numericValue),
+          ];
+          break;
+        default:
+          const _exhaustiveCheck: never = item;
+          throw new Error(`Unknown SumPathItem type encountered during CBOR encoding: ${(_exhaustiveCheck as any).type}`);
+      }
+      return CborEncoder.encodeArray(itemPayloadEncodedElements);
+    });
+
+    return CborEncoder.encodeArray(encodedPathItems);
+  }
+
+  public toJSON(): ISumPathJson {
+    const jsonItems: AnySumPathItemJson[] = this.path.map(item => {
+      const concreteItem = item as (SumPathItemRoot | SumPathItemInternalNode | SumPathItemInternalNodeHashed | SumPathItemEmptyBranch | SumPathItemLeaf);
+      
+      let itemAsJson: any; 
+
+      switch (concreteItem.type) {
+        case 'sumRoot':
+          itemAsJson = {
+            type: concreteItem.type,
+            rootHash: HexConverter.encode(concreteItem.rootHash),
+            sum: concreteItem.sum.toString(),
+          };
+          break;
+        case 'sumInternalNode':
+          itemAsJson = {
+            type: concreteItem.type,
+            prefix: concreteItem.prefix.toString(),
+          };
+          if (concreteItem.siblingHash !== undefined) {
+            itemAsJson.siblingHash = HexConverter.encode(concreteItem.siblingHash);
+          }
+          if (concreteItem.siblingSum !== undefined) {
+            itemAsJson.siblingSum = concreteItem.siblingSum.toString();
+          }
+          break;
+        case 'sumInternalNodeHashed':
+          itemAsJson = {
+            type: concreteItem.type,
+            nodeHash: HexConverter.encode(concreteItem.nodeHash),
+            sum: concreteItem.sum.toString(),
+          };
+          break;
+        case 'sumEmptyBranch':
+          itemAsJson = {
+            type: concreteItem.type,
+            direction: concreteItem.direction.toString(),
+            siblingHash: HexConverter.encode(concreteItem.siblingHash),
+            siblingSum: concreteItem.siblingSum.toString(),
+          };
+          break;
+        case 'sumLeaf':
+          itemAsJson = {
+            type: concreteItem.type,
+            value: typeof concreteItem.value === 'string'
+              ? concreteItem.value
+              : HexConverter.encode(concreteItem.value as Uint8Array),
+            valueType: typeof concreteItem.value === 'string'
+              ? 'string'
+              : 'Uint8Array',
+            numericValue: concreteItem.numericValue.toString(),
+          };
+          break;
+        default:
+          const _exhaustiveCheck: never = concreteItem;
+          throw new Error(`Unknown SumPathItem type encountered during toJSON serialization: ${(_exhaustiveCheck as any).type}`);
+      }
+      return itemAsJson as AnySumPathItemJson;
+    });
+
+    return {
+      pathPaddingBits: typeof this.pathPaddingBits === 'bigint' 
+        ? this.pathPaddingBits.toString() 
+        : this.pathPaddingBits,
+      items: jsonItems,
+    };
+  }
+
+  public static isJSON(data: unknown): data is ISumPathJson {
+    if (typeof data !== 'object' || data === null) {
+      return false;
+    }
+
+    const obj = data as ISumPathJson;
+
+    if (!('pathPaddingBits' in obj && (typeof obj.pathPaddingBits === 'string' || obj.pathPaddingBits === false))) {
+      return false;
+    }
+
+    if (!('items' in obj && Array.isArray(obj.items))) {
+      return false;
+    }
+
+    for (const item of obj.items) {
+      if (typeof item !== 'object' || item === null || typeof item.type !== 'string') {
+        return false;
+      }
+      switch (item.type) {
+        case 'sumRoot':
+          const rootNode = item as ISumPathItemRootJson;
+          if (!(typeof rootNode.rootHash === 'string' && typeof rootNode.sum === 'string')) return false;
+          break;
+        case 'sumInternalNode':
+          const internalNode = item as ISumPathItemInternalNodeJson;
+          if (!(typeof internalNode.prefix === 'string')) return false;
+          if (internalNode.siblingHash !== undefined && typeof internalNode.siblingHash !== 'string') return false;
+          if (internalNode.siblingSum !== undefined && typeof internalNode.siblingSum !== 'string') return false;
+          break;
+        case 'sumInternalNodeHashed':
+          const hashedNode = item as ISumPathItemInternalNodeHashedJson;
+          if (!(typeof hashedNode.nodeHash === 'string' && typeof hashedNode.sum === 'string')) return false;
+          break;
+        case 'sumEmptyBranch':
+          const emptyBranch = item as ISumPathItemEmptyBranchJson;
+          if (!(typeof emptyBranch.direction === 'string' && typeof emptyBranch.siblingHash === 'string' && typeof emptyBranch.siblingSum === 'string')) return false;
+          break;
+        case 'sumLeaf':
+          const leafNode = item as ISumPathItemLeafJson;
+          if (!(typeof leafNode.value === 'string' && typeof leafNode.numericValue === 'string' &&
+            typeof leafNode.valueType === 'string')) return false;
+          break;
+        default:
+          return false;
+      }
+    }
+    return true;
+  }
+
+  public static fromJSON(data: unknown, hashOptions: HashOptions): SumPath {
+    if (!SumPath.isJSON(data)) {
+      throw new Error('Invalid JSON data for SumPath object.');
+    }
+
+    const pathPaddingBits = data.pathPaddingBits === false ? false : BigInt(data.pathPaddingBits);
+
+    const reconstructedPathItems: SumPathItem[] = data.items.map((jsonItem: AnySumPathItemJson) => {
+      switch (jsonItem.type) {
+        case 'sumRoot':
+          return {
+            type: 'sumRoot',
+            rootHash: HexConverter.decode(jsonItem.rootHash),
+            sum: BigInt(jsonItem.sum),
+          } as SumPathItemRoot;
+        case 'sumInternalNode':
+          return {
+            type: 'sumInternalNode',
+            prefix: BigInt(jsonItem.prefix),
+            siblingHash: jsonItem.siblingHash ? HexConverter.decode(jsonItem.siblingHash) : undefined,
+            siblingSum: jsonItem.siblingSum ? BigInt(jsonItem.siblingSum) : undefined,
+          } as SumPathItemInternalNode;
+        case 'sumInternalNodeHashed':
+          return {
+            type: 'sumInternalNodeHashed',
+            nodeHash: HexConverter.decode(jsonItem.nodeHash),
+            sum: BigInt(jsonItem.sum),
+          } as SumPathItemInternalNodeHashed;
+        case 'sumEmptyBranch':
+          return {
+            type: 'sumEmptyBranch',
+            direction: BigInt(jsonItem.direction),
+            siblingHash: HexConverter.decode(jsonItem.siblingHash),
+            siblingSum: BigInt(jsonItem.siblingSum),
+          } as SumPathItemEmptyBranch;
+        case 'sumLeaf':
+          let reconstructedValue: string | Uint8Array;
+          const leafJson = jsonItem as (ISumPathItemLeafJson & { valueType?: 'string' | 'Uint8Array' }); // Simulate valueType
+          if (leafJson.valueType === 'Uint8Array') {
+            reconstructedValue = HexConverter.decode(leafJson.value);
+          } if (leafJson.valueType === 'string') {
+            reconstructedValue = leafJson.value;
+          } else {
+            throw new Error(`Unknown value type: ${leafJson.valueType}`);
+          }
+          return {
+            type: 'sumLeaf',
+            value: reconstructedValue,
+            numericValue: BigInt(leafJson.numericValue),
+          } as SumPathItemLeaf;
+        default:
+          const exhaustiveCheck: never = jsonItem;
+          throw new Error(`Invalid item type in SumPath JSON data during reconstruction: ${(exhaustiveCheck as any).type}`);
+      }
+    });
+
+    return new SumPath(reconstructedPathItems, hashOptions, pathPaddingBits);
   }
 }
 
