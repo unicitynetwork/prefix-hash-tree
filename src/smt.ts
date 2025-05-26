@@ -15,6 +15,7 @@ import { DataHasherFactory } from '@unicitylabs/commons/lib/hash/DataHasherFacto
 import { HashAlgorithm } from '@unicitylabs/commons/lib/hash/HashAlgorithm.js';
 import { HexConverter } from '@unicitylabs/commons/lib/util/HexConverter.js';
 import { CborEncoder } from '@unicitylabs/commons/lib/cbor/CborEncoder.js';
+import { BigintConverter } from '@unicitylabs/commons/lib/util/BigintConverter.js';
 
 export const LEFT: bigint = 0n;
 export const RIGHT: bigint = 1n;
@@ -700,7 +701,7 @@ export class Path extends AbstractPath<PathItem, PathItemRoot, PathItemInternalN
         case 'internalNode':
           itemPayloadEncodedElements = [
             CborEncoder.encodeTextString(concreteItem.type),
-            CborEncoder.encodeUnsignedInteger(concreteItem.prefix),
+            CborEncoder.encodeByteString(BigintConverter.encode(concreteItem.prefix)),
             CborEncoder.encodeOptional(concreteItem.siblingHash, CborEncoder.encodeByteString),
           ];
           break;
@@ -713,7 +714,7 @@ export class Path extends AbstractPath<PathItem, PathItemRoot, PathItemInternalN
         case 'emptyBranch':
           itemPayloadEncodedElements = [
             CborEncoder.encodeTextString(concreteItem.type),
-            CborEncoder.encodeUnsignedInteger(concreteItem.direction),
+            CborEncoder.encodeByteString(BigintConverter.encode(concreteItem.direction)),
             CborEncoder.encodeByteString(concreteItem.siblingHash),
           ];
           break;

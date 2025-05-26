@@ -12,6 +12,7 @@ import { SumLeaf } from './types/sumtreeindex.js';
 import { HashAlgorithm } from '@unicitylabs/commons/lib/hash/HashAlgorithm.js';
 import { CborEncoder } from '@unicitylabs/commons/lib/cbor/CborEncoder.js';
 import { HexConverter } from '@unicitylabs/commons/lib/util/HexConverter.js';
+import { BigintConverter } from '@unicitylabs/commons/lib/util/BigintConverter.js';
 
 
 
@@ -334,30 +335,30 @@ export class SumPath extends AbstractPath<SumPathItem, SumPathItemRoot, SumPathI
           itemPayloadEncodedElements = [
             CborEncoder.encodeTextString(item.type),
             CborEncoder.encodeByteString(item.rootHash),
-            CborEncoder.encodeUnsignedInteger(item.sum),
+            CborEncoder.encodeByteString(BigintConverter.encode(item.sum)),
           ];
           break;
         case 'sumInternalNode':
           itemPayloadEncodedElements = [
             CborEncoder.encodeTextString(item.type),
-            CborEncoder.encodeUnsignedInteger(item.prefix),
+            CborEncoder.encodeByteString(BigintConverter.encode(item.prefix)),
             CborEncoder.encodeOptional(item.siblingHash, CborEncoder.encodeByteString),
-            CborEncoder.encodeOptional(item.siblingSum, CborEncoder.encodeUnsignedInteger),
+            CborEncoder.encodeOptional(encodeBigintOrUndefined(item.siblingSum), CborEncoder.encodeByteString),
           ];
           break;
         case 'sumInternalNodeHashed':
           itemPayloadEncodedElements = [
             CborEncoder.encodeTextString(item.type),
             CborEncoder.encodeByteString(item.nodeHash),
-            CborEncoder.encodeUnsignedInteger(item.sum),
+            CborEncoder.encodeByteString(BigintConverter.encode(item.sum)),
           ];
           break;
         case 'sumEmptyBranch':
           itemPayloadEncodedElements = [
             CborEncoder.encodeTextString(item.type),
-            CborEncoder.encodeUnsignedInteger(item.direction),
+            CborEncoder.encodeByteString(BigintConverter.encode(item.direction)),
             CborEncoder.encodeByteString(item.siblingHash),
-            CborEncoder.encodeUnsignedInteger(item.siblingSum),
+            CborEncoder.encodeByteString(BigintConverter.encode(item.siblingSum)),
           ];
           break;
         case 'sumLeaf':
@@ -368,7 +369,7 @@ export class SumPath extends AbstractPath<SumPathItem, SumPathItemRoot, SumPathI
           itemPayloadEncodedElements = [
             CborEncoder.encodeTextString(item.type),
             encodedValue,
-            CborEncoder.encodeUnsignedInteger(item.numericValue),
+            CborEncoder.encodeByteString(BigintConverter.encode(item.numericValue)),
           ];
           break;
         default:
@@ -559,3 +560,6 @@ export class SumPath extends AbstractPath<SumPathItem, SumPathItemRoot, SumPathI
   }
 }
 
+function encodeBigintOrUndefined(value: bigint | undefined): Uint8Array | undefined {
+  return (value === undefined) ? undefined : BigintConverter.encode(value);
+}
