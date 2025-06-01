@@ -540,7 +540,7 @@ export class SumPath extends AbstractPath<SumPathItem, SumPathItemRoot, SumPathI
           const leafJson = jsonItem as (ISumPathItemLeafJson & { valueType?: 'string' | 'Uint8Array' }); // Simulate valueType
           if (leafJson.valueType === 'Uint8Array') {
             reconstructedValue = HexConverter.decode(leafJson.value);
-          } if (leafJson.valueType === 'string') {
+          } else if (leafJson.valueType === 'string') {
             reconstructedValue = leafJson.value;
           } else {
             throw new Error(`Unknown value type: ${leafJson.valueType}`);
