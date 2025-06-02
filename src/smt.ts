@@ -16,6 +16,7 @@ import { HashAlgorithm } from '@unicitylabs/commons/lib/hash/HashAlgorithm.js';
 import { HexConverter } from '@unicitylabs/commons/lib/util/HexConverter.js';
 import { CborEncoder } from '@unicitylabs/commons/lib/cbor/CborEncoder.js';
 import { BigintConverter } from '@unicitylabs/commons/lib/util/BigintConverter.js';
+import { stringToBytes } from './utils.js';
 
 export const LEFT: bigint = 0n;
 export const RIGHT: bigint = 1n;
@@ -340,7 +341,7 @@ export abstract class AbstractLeafNode<LeafNodeType extends AbstractLeafNode<Lea
     const hasher = createHasher(this.hashOptions);
     return (await hasher
         .update(padTo32Bytes(LEAF_PREFIX))
-        .update(typeof(this.value) == 'string' ? Buffer.from(this.value) : padTo32Bytes(this.value))
+        .update(typeof(this.value) == 'string' ? stringToBytes(this.value) : padTo32Bytes(this.value))
         .digest()).data;
   }
 }
@@ -671,7 +672,7 @@ export class Path extends AbstractPath<PathItem, PathItemRoot, PathItemInternalN
         const hasher = createHasher(hashOptions);
         return (await hasher
           .update(padTo32Bytes(LEAF_PREFIX))
-          .update(typeof(leaf.value) == 'string' ? Buffer.from(leaf.value) : padTo32Bytes(leaf.value))
+          .update(typeof(leaf.value) == 'string' ? stringToBytes(leaf.value) : padTo32Bytes(leaf.value))
         .digest()).data;
       },
       async hashLeg (prefix: bigint, childHash: Uint8Array): Promise<Uint8Array> {

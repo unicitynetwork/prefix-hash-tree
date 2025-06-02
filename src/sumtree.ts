@@ -13,6 +13,7 @@ import { HashAlgorithm } from '@unicitylabs/commons/lib/hash/HashAlgorithm.js';
 import { CborEncoder } from '@unicitylabs/commons/lib/cbor/CborEncoder.js';
 import { HexConverter } from '@unicitylabs/commons/lib/util/HexConverter.js';
 import { BigintConverter } from '@unicitylabs/commons/lib/util/BigintConverter.js';
+import { stringToBytes } from './utils.js';
 
 
 
@@ -107,7 +108,7 @@ export class SumLeafNode extends AbstractLeafNode<SumLeafNode, SumInternalNode, 
     const hasher = createHasher(this.hashOptions);
     return (await hasher
       .update(padTo32Bytes(LEAF_PREFIX))
-      .update(typeof(this.value) == 'string' ? Buffer.from(this.value) : padTo32Bytes(this.value))
+      .update(typeof(this.value) == 'string' ? stringToBytes(this.value) : padTo32Bytes(this.value))
       .update(padTo32Bytes(this.numericValue))
       .digest()).data;
   }
@@ -311,7 +312,7 @@ export class SumPath extends AbstractPath<SumPathItem, SumPathItemRoot, SumPathI
         const hasher = createHasher(hashOptions);
         return (await hasher
           .update(padTo32Bytes(LEAF_PREFIX))
-          .update(typeof(leaf.value) == 'string' ? Buffer.from(leaf.value) : padTo32Bytes(leaf.value))
+          .update(typeof(leaf.value) == 'string' ? stringToBytes(leaf.value) : padTo32Bytes(leaf.value))
           .update(padTo32Bytes(leaf.numericValue))
           .digest()).data;
       },
