@@ -1049,7 +1049,7 @@ export function createHasher(hashOptions: HashOptions) {
   return hashOptions.dataHasherFactory.create(hashOptions.algorithm);
 }
 
-export type HashOptions = {
-  dataHasherFactory: DataHasherFactory<IDataHasher>;
+export type HashOptions<T extends IDataHasher = IDataHasher> = {
+  dataHasherFactory: DataHasherFactory<T>;
   algorithm: HashAlgorithm;
 };
