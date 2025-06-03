@@ -2,8 +2,8 @@
   "name": "@unicitylabs/prefix-hash-tree",
   "version": "1.2.13",
   "description": "Core authenticated aggregator data structure based on prefix and hash trees",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
   "type": "module",
   "scripts": {
     "build": "tsc",
