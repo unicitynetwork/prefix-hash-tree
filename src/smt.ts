@@ -1352,7 +1352,7 @@ function uint8ArraysEqual(a: Uint8Array, b: Uint8Array): boolean {
   return true;
 }
 
-export function createHasher(hashOptions: HashOptions) {
+export function createHasher(hashOptions: HashOptions): IDataHasher {
   return hashOptions.dataHasherFactory.create(hashOptions.algorithm);
 }
 
