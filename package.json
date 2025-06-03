@@ -9,7 +9,8 @@
     "build": "tsc",
     "prepare": "npm run build",
     "test": "cross-env NODE_NO_WARNINGS=1 mocha --loader=ts-node/esm 'test/**/*.spec.ts'",
-    "lint": "eslint . --ext .ts"
+    "lint": "eslint \"src/**/*\" \"test/**/*\"",
+    "lint:fix": "eslint \"src/**/*\" \"test/**/*\" --fix"
   },
   "repository": {
     "type": "git",

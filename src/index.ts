@@ -1,11 +1,35 @@
-import { SMT, AbstractTree, Path, getCommonPathBits, padAndValidatePath, unpad, splitPrefix } from './smt.js';
-import { SumPath } from './sumtree.js';
-import { SumTree } from './sumtree.js';
-import { Leaf, PathItem, PrefixSplit, AnyPathItemJson, IPathItemRootJson, IPathItemInternalNodeJson,
-  IPathItemInternalNodeHashedJson, IPathItemEmptyBranchJson, IPathItemLeafJson, IPathJson } from './types/index.js';
-import { SumLeaf, AnySumPathItemJson, ISumPathItemRootJson, ISumPathItemInternalNodeJson,
-  ISumPathItemInternalNodeHashedJson, ISumPathItemEmptyBranchJson, ISumPathItemLeafJson,
-  ISumPathJson} from './types/sumtreeindex.js';
+import {
+  SMT,
+  AbstractTree,
+  Path,
+  getCommonPathBits,
+  padAndValidatePath,
+  unpad,
+  splitPrefix,
+} from "./smt.js";
+import { SumPath, SumTree } from "./sumtree.js";
+import {
+  Leaf,
+  PathItem,
+  PrefixSplit,
+  AnyPathItemJson,
+  IPathItemRootJson,
+  IPathItemInternalNodeJson,
+  IPathItemInternalNodeHashedJson,
+  IPathItemEmptyBranchJson,
+  IPathItemLeafJson,
+  IPathJson,
+} from "./types/index.js";
+import {
+  SumLeaf,
+  AnySumPathItemJson,
+  ISumPathItemRootJson,
+  ISumPathItemInternalNodeJson,
+  ISumPathItemInternalNodeHashedJson,
+  ISumPathItemEmptyBranchJson,
+  ISumPathItemLeafJson,
+  ISumPathJson,
+} from "./types/sumtreeindex.js";
 
 export {
   SMT,
@@ -21,7 +45,6 @@ export {
   SumLeaf,
   PathItem,
   PrefixSplit,
-
   AnyPathItemJson,
   IPathItemRootJson,
   IPathItemInternalNodeJson,
@@ -29,12 +52,11 @@ export {
   IPathItemEmptyBranchJson,
   IPathItemLeafJson,
   IPathJson,
-
   AnySumPathItemJson,
   ISumPathItemRootJson,
   ISumPathItemInternalNodeJson,
   ISumPathItemInternalNodeHashedJson,
   ISumPathItemEmptyBranchJson,
   ISumPathItemLeafJson,
-  ISumPathJson
+  ISumPathJson,
 };

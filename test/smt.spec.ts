@@ -1,82 +1,109 @@
-import { assert } from 'chai';
+import { DataHasherFactory } from "@unicitylabs/commons/lib/hash/DataHasherFactory.js";
+import { HashAlgorithm } from "@unicitylabs/commons/lib/hash/HashAlgorithm.js";
+import { NodeDataHasher } from "@unicitylabs/commons/lib/hash/NodeDataHasher.js";
+import { HexConverter } from "@unicitylabs/commons/lib/util/HexConverter.js";
+import { assert } from "chai";
 
-import { Leaf, SMT, SumTree, getCommonPathBits, splitPrefix, padAndValidatePath, unpad, Path, SumPath } from '../src/index.js';
-import { padTo32Bytes } from '../src/smt.js';
-
-import { DataHasherFactory } from '@unicitylabs/commons/lib/hash/DataHasherFactory.js';
-import { NodeDataHasher } from '@unicitylabs/commons/lib/hash/NodeDataHasher.js';
-import { HexConverter  } from '@unicitylabs/commons/lib/util/HexConverter.js';
-import { sha256 } from './utils.js';
-import { HashAlgorithm } from '@unicitylabs/commons/lib/hash/HashAlgorithm.js';
+import { sha256 } from "./utils.js";
+import {
+  Leaf,
+  SMT,
+  SumTree,
+  getCommonPathBits,
+  splitPrefix,
+  padAndValidatePath,
+  unpad,
+  Path,
+  SumPath,
+} from "../src/index.js";
+import { padTo32Bytes } from "../src/smt.js";
 
 type Tree = SMT | SumTree;
 
-const hashingOptions = { dataHasherFactory: new DataHasherFactory(NodeDataHasher), algorithm: HashAlgorithm.SHA256 };
+const hashingOptions = {
+  dataHasherFactory: new DataHasherFactory(NodeDataHasher),
+  algorithm: HashAlgorithm.SHA256,
+};
 
 async function checkPaths(
-  smt: Tree, 
-  leaves: Map<bigint, Leaf>, 
-  pathTransformFunc: (path: bigint) => bigint, 
-  shouldBeIncluded: boolean, 
-  failMsg: (path: bigint) => string
-): Promise<void> {
-  for (const [pathNum, leaf] of leaves) {
-    const requestedPath = pathTransformFunc(pathNum);
-    const path = await smt.getProof(requestedPath);
-    assert.equal(await path.provesInclusionAt(requestedPath), shouldBeIncluded, failMsg(requestedPath));
-  }
-}
-
-async function checkValues(
-  smt: Tree, 
-  leaves: Map<bigint, Leaf>, 
-  pathTransformFunc: (path: bigint) => bigint
+  smt: Tree,
+  leaves: Map<bigint, Leaf>,
+  pathTransformFunc: (path: bigint) => bigint,
+  shouldBeIncluded: boolean,
+  failMsg: (path: bigint) => string,
 ): Promise<void> {
   for (const [pathNum, leaf] of leaves) {
     const requestedPath = pathTransformFunc(pathNum);
     const path = await smt.getProof(requestedPath);
     assert.equal(
-      typeof(path.getLeafValue()) == 'string' ? path.getLeafValue() : HexConverter.encode(Buffer.from(path.getLeafValue() as Uint8Array)),
-      HexConverter.encode(await sha256(('value' + requestedPath.toString(2).substring(1)))), 
-      `Value of ${requestedPath.toString(2)} has been changed`
+      await path.provesInclusionAt(requestedPath),
+      shouldBeIncluded,
+      failMsg(requestedPath),
+    );
+  }
+}
+
+async function checkValues(
+  smt: Tree,
+  leaves: Map<bigint, Leaf>,
+  pathTransformFunc: (path: bigint) => bigint,
+): Promise<void> {
+  for (const [pathNum, leaf] of leaves) {
+    const requestedPath = pathTransformFunc(pathNum);
+    const path = await smt.getProof(requestedPath);
+    assert.equal(
+      typeof path.getLeafValue() == "string"
+        ? path.getLeafValue()
+        : HexConverter.encode(Buffer.from(path.getLeafValue() as Uint8Array)),
+      HexConverter.encode(
+        await sha256("value" + requestedPath.toString(2).substring(1)),
+      ),
+      `Value of ${requestedPath.toString(2)} has been changed`,
     );
   }
 }
 
 async function modifyValues(
-  smt: Tree, 
-  leaves: Map<bigint, Leaf>, 
+  smt: Tree,
+  leaves: Map<bigint, Leaf>,
   pathTransformFunc: (path: bigint) => bigint,
-  errorMessage: RegExp
+  errorMessage: RegExp,
 ): Promise<void> {
   for (const [path, leaf] of leaves) {
     const requestedPath = pathTransformFunc(path);
-    
-    const leafValue = HexConverter.encode(await sha256('different value'));
+
+    const leafValue = HexConverter.encode(await sha256("different value"));
     assert.throws(
       () => {
         if (smt instanceof SMT) {
-          smt.addLeaf(requestedPath, {value: leafValue});
+          smt.addLeaf(requestedPath, { value: leafValue });
         } else if (smt instanceof SumTree) {
-          smt.addLeaf(requestedPath, {value: leafValue, numericValue: 123456n});
+          smt.addLeaf(requestedPath, {
+            value: leafValue,
+            numericValue: 123456n,
+          });
         } else {
-          throw new Error('Unknonw tree type');
+          throw new Error("Unknonw tree type");
         }
       },
       Error,
-      errorMessage 
+      errorMessage,
     );
   }
 }
 
 async function generatePaths(l: number): Promise<Map<bigint, Leaf>> {
   const leaves: Array<[bigint, Leaf]> = [];
-  const trail = (1n << BigInt(l));
+  const trail = 1n << BigInt(l);
   for (let i = 0n; i < trail; i++) {
     const path = i | trail;
     leaves.push([
-      path, 
-      { value: HexConverter.encode(await sha256('value' + path.toString(2).substring(1))) }
+      path,
+      {
+        value: HexConverter.encode(
+          await sha256("value" + path.toString(2).substring(1)),
+        ),
+      },
     ]);
   }
   return new Map(leaves);
@@ -84,205 +111,277 @@ async function generatePaths(l: number): Promise<Map<bigint, Leaf>> {
 
 const testConfigs = [
   {
-    name: 'SMT routines',
+    name: "SMT routines",
     isSumTree: false,
-    createTree: (leaves: Map<bigint, Leaf>) => new SMT(new DataHasherFactory(NodeDataHasher), HashAlgorithm.SHA256, leaves, false),
-  },
-  {
-    name: 'Sum tree routines',
-    isSumTree: true,
-    createTree: (leaves: Map<bigint, Leaf>) => new SumTree(
+    createTree: (leaves: Map<bigint, Leaf>) =>
+      new SMT(
         new DataHasherFactory(NodeDataHasher),
         HashAlgorithm.SHA256,
-        new Map(Array.from(leaves).map(([path, leaf]) => (
-          [ path, {...leaf, numericValue: path + 99n} ]
-        ))),
-        false
+        leaves,
+        false,
+      ),
+  },
+  {
+    name: "Sum tree routines",
+    isSumTree: true,
+    createTree: (leaves: Map<bigint, Leaf>) =>
+      new SumTree(
+        new DataHasherFactory(NodeDataHasher),
+        HashAlgorithm.SHA256,
+        new Map(
+          Array.from(leaves).map(([path, leaf]) => [
+            path,
+            { ...leaf, numericValue: path + 99n },
+          ]),
         ),
-  }
+        false,
+      ),
+  },
 ];
 
 testConfigs.forEach((config) => {
-  describe(config.name, function() {
+  describe(config.name, function () {
     for (let i = 0; i < 1; i++) {
-      context(i === 0 ? 'sparse tree' : 'filled tree', async function() {
-        const leaves = i === 0 ? new Map<bigint, Leaf>([
-          [ 0b100000000n, {value: HexConverter.encode(await sha256('value00000000'))} ],
-          [ 0b100010000n, {value: HexConverter.encode(await sha256('value00010000'))} ],
-          [ 0b111100101n, {value: await sha256('value11100101') as Uint8Array} ],
-          [      0b1100n, {value: await sha256('value100') as Uint8Array} ],
-          [      0b1011n, {value: await sha256('value011') as Uint8Array} ],
-          [ 0b111101111n, {value: HexConverter.encode(await sha256('value11101111'))} ],
-          [  0b10001010n, {value: await sha256('value0001010') as Uint8Array} ],
-          [  0b11010101n, {value: await sha256('value1010101') as Uint8Array} ]
-        ]) : await generatePaths(7);
+      context(i === 0 ? "sparse tree" : "filled tree", async function () {
+        const leaves =
+          i === 0
+            ? new Map<bigint, Leaf>([
+                [
+                  0b100000000n,
+                  { value: HexConverter.encode(await sha256("value00000000")) },
+                ],
+                [
+                  0b100010000n,
+                  { value: HexConverter.encode(await sha256("value00010000")) },
+                ],
+                [
+                  0b111100101n,
+                  { value: (await sha256("value11100101")) as Uint8Array },
+                ],
+                [0b1100n, { value: (await sha256("value100")) as Uint8Array }],
+                [0b1011n, { value: (await sha256("value011")) as Uint8Array }],
+                [
+                  0b111101111n,
+                  { value: HexConverter.encode(await sha256("value11101111")) },
+                ],
+                [
+                  0b10001010n,
+                  { value: (await sha256("value0001010")) as Uint8Array },
+                ],
+                [
+                  0b11010101n,
+                  { value: (await sha256("value1010101")) as Uint8Array },
+                ],
+              ])
+            : await generatePaths(7);
 
         let smt: Tree;
 
-        beforeEach(function() {
+        beforeEach(function () {
           smt = config.createTree(leaves);
         });
 
-        context('general checks', function() {
-          it('specific hashes', async function() {
+        context("general checks", function () {
+          it("specific hashes", async function () {
             assert.equal(
-              HexConverter.encode(await smt.getRootHash()), 
-              config.isSumTree ? 
-                  '5cb6ea7b93485de6870262adde5c8a0b8814e0c2a46310814b4128c1fa562d96':
-                  'e962897140998666f5dc1280d0d5fea1d8f858955801bd94b404d6b81cbf39a2');
+              HexConverter.encode(await smt.getRootHash()),
+              config.isSumTree
+                ? "5cb6ea7b93485de6870262adde5c8a0b8814e0c2a46310814b4128c1fa562d96"
+                : "e962897140998666f5dc1280d0d5fea1d8f858955801bd94b404d6b81cbf39a2",
+            );
           });
         });
 
-        context('extracting proofs', function() {
-          it('extracting all inclusion proofs', async function() {
+        context("extracting proofs", function () {
+          it("extracting all inclusion proofs", async function () {
             await checkPaths(
-              smt, 
-              leaves, 
-              (p) => p, 
-              true, 
-              (p) => `Leaf at location ${p.toString(2)} not included`
+              smt,
+              leaves,
+              (p) => p,
+              true,
+              (p) => `Leaf at location ${p.toString(2)} not included`,
             );
             await checkValues(smt, leaves, (p) => p);
           });
 
           if (i === 0) {
-            it('extracting non-inclusion proofs for paths deviating from the existing branches', async function() {
+            it("extracting non-inclusion proofs for paths deviating from the existing branches", async function () {
               await checkPaths(
-                smt, 
-                leaves, 
-                (p) => p ^ 4n, 
-                false, 
-                (p) => `Leaf at location ${p.toString(2)} included`
+                smt,
+                leaves,
+                (p) => p ^ 4n,
+                false,
+                (p) => `Leaf at location ${p.toString(2)} included`,
               );
             });
           }
 
-          it('extracting non-inclusion proofs for paths exceeding existing branches', async function() {
+          it("extracting non-inclusion proofs for paths exceeding existing branches", async function () {
             await checkPaths(
-              smt, 
-              leaves, 
-              (p) => p | (1n << 512n), 
-              false, 
-              (p) => `Leaf at location ${p.toString(2)} included`
+              smt,
+              leaves,
+              (p) => p | (1n << 512n),
+              false,
+              (p) => `Leaf at location ${p.toString(2)} included`,
             );
           });
 
-          it('extracting non-inclusion proofs for paths stopping inside existing branches', async function() {
+          it("extracting non-inclusion proofs for paths stopping inside existing branches", async function () {
             await checkPaths(
-              smt, 
-              leaves, 
+              smt,
+              leaves,
               (p) => {
-                const pl = BigInt(p.toString(2).length) / 2n; 
-                const mask = (1n << pl) - 1n; 
+                const pl = BigInt(p.toString(2).length) / 2n;
+                const mask = (1n << pl) - 1n;
                 return (p & mask) | (1n << pl);
-              }, 
-              false, 
-              (p) => `Leaf at location ${p.toString(2)} included`
+              },
+              false,
+              (p) => `Leaf at location ${p.toString(2)} included`,
             );
           });
         });
 
         if (i === 0) {
-          context('Trying to perform illegal leaf/value modifications', function() {
-            context('Setting different value at existing leaf', function() {
-              beforeEach(async function() {
-                await modifyValues(smt, leaves, (p) => p, /Cannot add leaf inside the leg/);
+          context(
+            "Trying to perform illegal leaf/value modifications",
+            function () {
+              context("Setting different value at existing leaf", function () {
+                beforeEach(async function () {
+                  await modifyValues(
+                    smt,
+                    leaves,
+                    (p) => p,
+                    /Cannot add leaf inside the leg/,
+                  );
+                });
+
+                it("leaves values not changed", async function () {
+                  await checkValues(smt, leaves, (p) => p);
+                });
               });
 
-              it('leaves values not changed', async function() {
-                await checkValues(smt, leaves, (p) => p);
-              });
-            });
+              context(
+                "Adding leaf including in its path already existing leaf",
+                function () {
+                  beforeEach(async function () {
+                    await modifyValues(
+                      smt,
+                      leaves,
+                      (p) => p | (1n << 512n),
+                      /Cannot extend the leg through the leaf/,
+                    );
+                  });
 
-            context('Adding leaf including in its path already existing leaf', function() {
-              beforeEach(async function() {
-                await modifyValues(smt, leaves, (p) => p | (1n << 512n), /Cannot extend the leg through the leaf/);
-              });
+                  it("leaves values not changed", async function () {
+                    await checkPaths(
+                      smt,
+                      leaves,
+                      (p) => p | (1n << 512n),
+                      false,
+                      (p) => `Leaf at location ${p.toString(2)} included`,
+                    );
+                    await checkValues(smt, leaves, (p) => p);
+                  });
+                },
+              );
 
-              it('leaves values not changed', async function() {
-                await checkPaths(
-                  smt, 
-                  leaves, 
-                  (p) => p | (1n << 512n), 
-                  false, 
-                  (p) => `Leaf at location ${p.toString(2)} included`
-                );
-                await checkValues(smt, leaves, (p) => p);
-              });
-            });
+              context(
+                "Adding leaf inside a path of an already existing leaf",
+                function () {
+                  beforeEach(async function () {
+                    await modifyValues(
+                      smt,
+                      leaves,
+                      (p) => {
+                        const pl = BigInt(p.toString(2).length) / 2n;
+                        const mask = (1n << pl) - 1n;
+                        return (p & mask) | (1n << pl);
+                      },
+                      /Cannot add leaf inside the leg/,
+                    );
+                  });
 
-            context('Adding leaf inside a path of an already existing leaf', function() {
-              beforeEach(async function() {
-                await modifyValues(
-                  smt, 
-                  leaves, 
-                  (p) => {
-                    const pl = BigInt(p.toString(2).length) / 2n; 
-                    const mask = (1n << pl) - 1n; 
-                    return (p & mask) | (1n << pl);
-                  },
-                  /Cannot add leaf inside the leg/
-                );
-              });
+                  it("leaves values not changed", async function () {
+                    await checkPaths(
+                      smt,
+                      leaves,
+                      (p) => {
+                        const bitCountToHalf =
+                          BigInt(p.toString(2).length) / 2n;
+                        const maskKeepingHalfLowerBits =
+                          (1n << bitCountToHalf) - 1n;
+                        return (
+                          (p & maskKeepingHalfLowerBits) |
+                          (1n << bitCountToHalf)
+                        );
+                      },
+                      false,
+                      (p) => `Leaf at location ${p.toString(2)} included`,
+                    );
+                    await checkValues(smt, leaves, (p) => p);
+                  });
+                },
+              );
 
-              it('leaves values not changed', async function() {
-                await checkPaths(
-                  smt, 
-                  leaves, 
-                  (p) => {
-                    const bitCountToHalf = BigInt(p.toString(2).length) / 2n; 
-                    const maskKeepingHalfLowerBits = (1n << bitCountToHalf) - 1n; 
-                    return (p & maskKeepingHalfLowerBits) | (1n << bitCountToHalf);
-                  }, 
-                  false, 
-                  (p) => `Leaf at location ${p.toString(2)} included`
-                );
-                await checkValues(smt, leaves, (p) => p);
+              it("Wrong path acquired for the requested path", async function () {
+                const path = await smt.getProof(0b11111111111000n);
+                try {
+                  await path.provesInclusionAt(0b11111100000000n);
+                  assert.fail(
+                    "Expected provesInclusionAt to reject, but it resolved.",
+                  );
+                } catch (error) {
+                  assert.instanceOf(
+                    error,
+                    Error,
+                    "The caught error should be an instance of Error.",
+                  );
+                  assert.match(
+                    (error as Error).message,
+                    /Wrong path acquired for the requested path/,
+                    "Error message mismatch.",
+                  );
+                }
               });
-            });
-
-            it('Wrong path acquired for the requested path', async function() {
-              const path = await smt.getProof(0b11111111111000n);
-              try {
-                await path.provesInclusionAt(0b11111100000000n);
-                assert.fail("Expected provesInclusionAt to reject, but it resolved.");
-              } catch (error) {
-                assert.instanceOf(error, Error, "The caught error should be an instance of Error.");
-                assert.match((error as Error).message, /Wrong path acquired for the requested path/, "Error message mismatch.");
-              }
-            });  
-          });
+            },
+          );
         }
 
-        it ('toJSON and fromJSON', async function() {
-          const path = await smt.getProof(0b111101111n)
+        it("toJSON and fromJSON", async function () {
+          const path = await smt.getProof(0b111101111n);
           assert.isTrue((await path.verifyPath()).success);
 
           const json = path.toJSON();
-          const deserialized = 
-              (path instanceof Path) ? 
-                  Path.fromJSON(json, hashingOptions) : 
-              (path instanceof SumPath) ?
-                  SumPath.fromJSON(json, hashingOptions) :
-              (() => { throw new Error(`Unsupported type.`); })();
+          const deserialized =
+            path instanceof Path
+              ? Path.fromJSON(json, hashingOptions)
+              : path instanceof SumPath
+                ? SumPath.fromJSON(json, hashingOptions)
+                : (() => {
+                    throw new Error(`Unsupported type.`);
+                  })();
 
           assert.isTrue((await deserialized.verifyPath()).success);
-          
-          const bigintToStringReplacer: ((this: any, key: string, value: any) => any) | undefined = (_, v) => typeof v === 'bigint' ? v.toString() : v;
+
+          const bigintToStringReplacer:
+            | ((this: any, key: string, value: any) => any)
+            | undefined = (_, v) => (typeof v === "bigint" ? v.toString() : v);
 
           assert.equal(
-              JSON.stringify(path.getItems(), bigintToStringReplacer),
-              JSON.stringify(deserialized.getItems(), bigintToStringReplacer));
+            JSON.stringify(path.getItems(), bigintToStringReplacer),
+            JSON.stringify(deserialized.getItems(), bigintToStringReplacer),
+          );
         });
 
-        it ('toCBOR', async function() {
-          const path = await smt.getProof(0b111101111n)
+        it("toCBOR", async function () {
+          const path = await smt.getProof(0b111101111n);
 
           assert.equal(
             HexConverter.encode(path.toCBOR()),
-            config.isSumTree ?
-              '85836773756d526f6f7458205cb6ea7b93485de6870262adde5c8a0b8814e0c2a46310814b4128c1fa562d96420a72846f73756d496e7465726e616c4e6f64654103582058a85f04522d459250271d24e978e344bc7cb62a9c4f28276cafa9e29dce0e62420432846f73756d496e7465726e616c4e6f646541035820d708a7f919ce5b8b24884133b0b99772c8a3270d3dd6d419fe9f1982374fb462420380846f73756d496e7465726e616c4e6f6465417b58209c5a0a71e6ad1d5aab99846746f1817d7be598e0c8a5055f263744f4bfb6e51e416e836773756d4c656166784032623963333032623437376430656339373366313634383833656262633364666436333233343134663063326362636464663865626633313435626265366330420252':
-              '858264726f6f745820e962897140998666f5dc1280d0d5fea1d8f858955801bd94b404d6b81cbf39a2836c696e7465726e616c4e6f64654103582016b9594703e82a310dea2014d20ecf5cb074b9bc4543db3280567fe32bd30ecd836c696e7465726e616c4e6f646541035820dc9b6b9ef711c8bf0ca4bbd13a483b88e85adb8bc6be04da7e07c4fb438eb8e7836c696e7465726e616c4e6f6465417b5820a9ecbb4be843158fd151920733cc3881f41c6cdc03dc387ca2d2d7945c2d43a682646c656166784032623963333032623437376430656339373366313634383833656262633364666436333233343134663063326362636464663865626633313435626265366330');
+            config.isSumTree
+              ? "85836773756d526f6f7458205cb6ea7b93485de6870262adde5c8a0b8814e0c2a46310814b4128c1fa562d96420a72846f73756d496e7465726e616c4e6f64654103582058a85f04522d459250271d24e978e344bc7cb62a9c4f28276cafa9e29dce0e62420432846f73756d496e7465726e616c4e6f646541035820d708a7f919ce5b8b24884133b0b99772c8a3270d3dd6d419fe9f1982374fb462420380846f73756d496e7465726e616c4e6f6465417b58209c5a0a71e6ad1d5aab99846746f1817d7be598e0c8a5055f263744f4bfb6e51e416e836773756d4c656166784032623963333032623437376430656339373366313634383833656262633364666436333233343134663063326362636464663865626633313435626265366330420252"
+              : "858264726f6f745820e962897140998666f5dc1280d0d5fea1d8f858955801bd94b404d6b81cbf39a2836c696e7465726e616c4e6f64654103582016b9594703e82a310dea2014d20ecf5cb074b9bc4543db3280567fe32bd30ecd836c696e7465726e616c4e6f646541035820dc9b6b9ef711c8bf0ca4bbd13a483b88e85adb8bc6be04da7e07c4fb438eb8e7836c696e7465726e616c4e6f6465417b5820a9ecbb4be843158fd151920733cc3881f41c6cdc03dc387ca2d2d7945c2d43a682646c656166784032623963333032623437376430656339373366313634383833656262633364666436333233343134663063326362636464663865626633313435626265366330",
+          );
         });
       });
     }
@@ -291,22 +390,34 @@ testConfigs.forEach((config) => {
   async function testTreeWithSingleLeaf(longPath: bigint) {
     const tree = config.createTree(
       new Map<bigint, Leaf>([
-        [longPath, { value: HexConverter.encode(await sha256('value00000000')) }],
-      ]));
-    assert.isTrue(await (await tree.getProof(longPath)).provesInclusionAt(longPath));
+        [
+          longPath,
+          { value: HexConverter.encode(await sha256("value00000000")) },
+        ],
+      ]),
+    );
+    assert.isTrue(
+      await (await tree.getProof(longPath)).provesInclusionAt(longPath),
+    );
     return tree;
   }
 
-  describe('Hash function padding', function() {
-    it('should handle a single node with a long prefix', async function() {
-      await testTreeWithSingleLeaf(0xdf75dba2b13db9a7554e2f7d9a967feec9b2998cfe08e730a56cf3fc2088b870n);
-      const tree = await testTreeWithSingleLeaf(0xdf75dba2b13db9a7554e2f7d9a967feec9b2998cfe08e730a56cf3fc2088b87fn);
+  describe("Hash function padding", function () {
+    it("should handle a single node with a long prefix", async function () {
+      await testTreeWithSingleLeaf(
+        0xdf75dba2b13db9a7554e2f7d9a967feec9b2998cfe08e730a56cf3fc2088b870n,
+      );
+      const tree =
+        await testTreeWithSingleLeaf(
+          0xdf75dba2b13db9a7554e2f7d9a967feec9b2998cfe08e730a56cf3fc2088b87fn,
+        );
 
       assert.equal(
-          HexConverter.encode(await tree.getRootHash()),
-          tree instanceof SMT ?
-            '178ab5191e4ccd2425448eb06aac88c0c5c5085703fefe119ccb33e5ff906a25':
-            'f4a2933b49c37f3518a08df55356da83fdf312f094c513e67726f91896e2d707');
+        HexConverter.encode(await tree.getRootHash()),
+        tree instanceof SMT
+          ? "178ab5191e4ccd2425448eb06aac88c0c5c5085703fefe119ccb33e5ff906a25"
+          : "f4a2933b49c37f3518a08df55356da83fdf312f094c513e67726f91896e2d707",
+      );
     });
   });
 });
@@ -323,128 +434,174 @@ class MyNode {
   }
 }
 
-describe('Utility functions', function() {
-  it('getCommonPathBits', function() {
-    assert.equal(getCommonPathBits('', ''), '');
+describe("Utility functions", function () {
+  it("getCommonPathBits", function () {
+    assert.equal(getCommonPathBits("", ""), "");
 
-    assert.equal(getCommonPathBits('', '0'), '');
-    assert.equal(getCommonPathBits('1', ''), '');
+    assert.equal(getCommonPathBits("", "0"), "");
+    assert.equal(getCommonPathBits("1", ""), "");
 
-    assert.equal(getCommonPathBits('0', '0'), '0');
-    assert.equal(getCommonPathBits('1', '0'), '');
+    assert.equal(getCommonPathBits("0", "0"), "0");
+    assert.equal(getCommonPathBits("1", "0"), "");
 
-    assert.equal(getCommonPathBits('00', '00'), '00');
-    assert.equal(getCommonPathBits('10', '10'), '10');
-    assert.equal(getCommonPathBits('10', '00'), '0');
+    assert.equal(getCommonPathBits("00", "00"), "00");
+    assert.equal(getCommonPathBits("10", "10"), "10");
+    assert.equal(getCommonPathBits("10", "00"), "0");
 
-    assert.equal(getCommonPathBits('01111', '10111'), '111');
+    assert.equal(getCommonPathBits("01111", "10111"), "111");
   });
 
-  it('splitPrefix', function() {
-    assert.throws(() => {splitPrefix(0b0n, 0b0n)}, Error, /Invalid prefix: 0/);
-    assert.throws(() => {splitPrefix(0b1n, 0b0n)}, Error, /Invalid prefix: 0/);
-    assert.throws(() => {splitPrefix(0b0n, 0b1n)}, Error, /Invalid prefix: 0/);
+  it("splitPrefix", function () {
+    assert.throws(
+      () => {
+        splitPrefix(0b0n, 0b0n);
+      },
+      Error,
+      /Invalid prefix: 0/,
+    );
+    assert.throws(
+      () => {
+        splitPrefix(0b1n, 0b0n);
+      },
+      Error,
+      /Invalid prefix: 0/,
+    );
+    assert.throws(
+      () => {
+        splitPrefix(0b0n, 0b1n);
+      },
+      Error,
+      /Invalid prefix: 0/,
+    );
 
     // Equal paths
-    assert.deepStrictEqual(
-        splitPrefix(0b1n, 0b1n), 
-        { commonPrefix: 0b1n, remainingPathUniqueSuffix: 0b1n, existingPrefixUniqueSuffix: 0b1n });
-    assert.deepStrictEqual(
-        splitPrefix(0b10n, 0b10n), 
-        { commonPrefix: 0b10n, remainingPathUniqueSuffix: 0b1n, existingPrefixUniqueSuffix: 0b1n });
-    assert.deepStrictEqual(
-        splitPrefix(0b100n, 0b100n), 
-        { commonPrefix: 0b100n, remainingPathUniqueSuffix: 0b1n, existingPrefixUniqueSuffix: 0b1n });
-    assert.deepStrictEqual(
-        splitPrefix(0b101n, 0b101n), 
-        { commonPrefix: 0b101n, remainingPathUniqueSuffix: 0b1n, existingPrefixUniqueSuffix: 0b1n });
+    assert.deepStrictEqual(splitPrefix(0b1n, 0b1n), {
+      commonPrefix: 0b1n,
+      remainingPathUniqueSuffix: 0b1n,
+      existingPrefixUniqueSuffix: 0b1n,
+    });
+    assert.deepStrictEqual(splitPrefix(0b10n, 0b10n), {
+      commonPrefix: 0b10n,
+      remainingPathUniqueSuffix: 0b1n,
+      existingPrefixUniqueSuffix: 0b1n,
+    });
+    assert.deepStrictEqual(splitPrefix(0b100n, 0b100n), {
+      commonPrefix: 0b100n,
+      remainingPathUniqueSuffix: 0b1n,
+      existingPrefixUniqueSuffix: 0b1n,
+    });
+    assert.deepStrictEqual(splitPrefix(0b101n, 0b101n), {
+      commonPrefix: 0b101n,
+      remainingPathUniqueSuffix: 0b1n,
+      existingPrefixUniqueSuffix: 0b1n,
+    });
 
     // Completely different paths
-    assert.deepStrictEqual(
-        splitPrefix(0b101n, 0b110n), 
-        { commonPrefix: 0b1n, remainingPathUniqueSuffix: 0b101n, existingPrefixUniqueSuffix: 0b110n });
+    assert.deepStrictEqual(splitPrefix(0b101n, 0b110n), {
+      commonPrefix: 0b1n,
+      remainingPathUniqueSuffix: 0b101n,
+      existingPrefixUniqueSuffix: 0b110n,
+    });
 
     // Paths similar from the end
-    assert.deepStrictEqual(
-        splitPrefix(0b101n, 0b111n), 
-        { commonPrefix: 0b11n, remainingPathUniqueSuffix: 0b10n, existingPrefixUniqueSuffix: 0b11n });
+    assert.deepStrictEqual(splitPrefix(0b101n, 0b111n), {
+      commonPrefix: 0b11n,
+      remainingPathUniqueSuffix: 0b10n,
+      existingPrefixUniqueSuffix: 0b11n,
+    });
 
     // Path similarity from the start
-    assert.deepStrictEqual(
-        splitPrefix(0b100n, 0b101n), 
-        { commonPrefix: 0b1n, remainingPathUniqueSuffix: 0b100n, existingPrefixUniqueSuffix: 0b101n });
+    assert.deepStrictEqual(splitPrefix(0b100n, 0b101n), {
+      commonPrefix: 0b1n,
+      remainingPathUniqueSuffix: 0b100n,
+      existingPrefixUniqueSuffix: 0b101n,
+    });
   });
 
-  it('getLocation', function() {
+  it("getLocation", function () {
     // Empty tree
     assert.equal(
       new Path(
-        [ {type: 'root', rootHash: 9} ], 
-        hashingOptions, 
-        false
-      ).getPaddedLocation(), 
-      0b1n);
+        [{ type: "root", rootHash: 9 }],
+        hashingOptions,
+        false,
+      ).getPaddedLocation(),
+      0b1n,
+    );
 
     assert.throws(
       () => {
         new Path(
           [
-            {type: 'root', rootHash: 9},
-            {type: 'internalNode', prefix: 0b0n, siblingHash: 9},
-            {type: 'leaf', value: 'v'}
-          ], 
-          hashingOptions, 
-          false
-        ).getPaddedLocation()
-      }, 
-      Error, 
-      /Invalid prefix: 0/);
+            { type: "root", rootHash: 9 },
+            { type: "internalNode", prefix: 0b0n, siblingHash: 9 },
+            { type: "leaf", value: "v" },
+          ],
+          hashingOptions,
+          false,
+        ).getPaddedLocation();
+      },
+      Error,
+      /Invalid prefix: 0/,
+    );
 
     // An edge on the left
     assert.equal(
       new Path(
         [
-          {type: 'root', rootHash: 9},
-          {type: 'internalNode', prefix: 0b10n, siblingHash: 9},
-          {type: 'leaf', value: 'v'}
-        ], 
-        { dataHasherFactory: new DataHasherFactory(NodeDataHasher), algorithm: HashAlgorithm.SHA256 },
-        false
-      ).getPaddedLocation(), 
-      0b10n);
+          { type: "root", rootHash: 9 },
+          { type: "internalNode", prefix: 0b10n, siblingHash: 9 },
+          { type: "leaf", value: "v" },
+        ],
+        {
+          dataHasherFactory: new DataHasherFactory(NodeDataHasher),
+          algorithm: HashAlgorithm.SHA256,
+        },
+        false,
+      ).getPaddedLocation(),
+      0b10n,
+    );
 
-    // A edge on the left with a longer prefix 
+    // A edge on the left with a longer prefix
     assert.equal(
       new Path(
         [
-          {type: 'root', rootHash: 9},
-          {type: 'internalNode', prefix: 0b1110n, siblingHash: 9},
-          {type: 'leaf', value: 'v'}
-        ], 
-        { dataHasherFactory: new DataHasherFactory(NodeDataHasher), algorithm: HashAlgorithm.SHA256 },
-        false
-      ).getPaddedLocation(), 
-      0b1110n);
+          { type: "root", rootHash: 9 },
+          { type: "internalNode", prefix: 0b1110n, siblingHash: 9 },
+          { type: "leaf", value: "v" },
+        ],
+        {
+          dataHasherFactory: new DataHasherFactory(NodeDataHasher),
+          algorithm: HashAlgorithm.SHA256,
+        },
+        false,
+      ).getPaddedLocation(),
+      0b1110n,
+    );
 
     // Several nodes on the path
     assert.equal(
       new Path(
         [
-          {type: 'root', rootHash: 9},
-          {type: 'internalNode', prefix: 0b1_0n, siblingHash: 9},
-          {type: 'internalNode', prefix: 0b1_0n, siblingHash: 9},
-          {type: 'internalNode', prefix: 0b1_01n, siblingHash: 9},
-          {type: 'internalNode', prefix: 0b1_0111n, siblingHash: 9},
-          {type: 'internalNode', prefix: 0b1_0n, siblingHash: 9},
-          {type: 'leaf', value: 'v'}
-        ], 
-        { dataHasherFactory: new DataHasherFactory(NodeDataHasher), algorithm: HashAlgorithm.SHA256 },
-        false
-      ).getPaddedLocation(), 
-      0b1_0_0111_01_0_0n);
+          { type: "root", rootHash: 9 },
+          { type: "internalNode", prefix: 0b1_0n, siblingHash: 9 },
+          { type: "internalNode", prefix: 0b1_0n, siblingHash: 9 },
+          { type: "internalNode", prefix: 0b1_01n, siblingHash: 9 },
+          { type: "internalNode", prefix: 0b1_0111n, siblingHash: 9 },
+          { type: "internalNode", prefix: 0b1_0n, siblingHash: 9 },
+          { type: "leaf", value: "v" },
+        ],
+        {
+          dataHasherFactory: new DataHasherFactory(NodeDataHasher),
+          algorithm: HashAlgorithm.SHA256,
+        },
+        false,
+      ).getPaddedLocation(),
+      0b1_0_0111_01_0_0n,
+    );
   });
 
-  it('padAndValidatePath', function() {
+  it("padAndValidatePath", function () {
     // Highest bit is set by the function.
     assert.equal(padAndValidatePath(0b0n, 1n), 0b10n);
     assert.equal(padAndValidatePath(0b1n, 1n), 0b11n);
@@ -454,25 +611,35 @@ describe('Utility functions', function() {
     assert.equal(padAndValidatePath(0b11n, 1n), 0b11n);
 
     // Larger bit length.
-    assert.equal(padAndValidatePath(0b0n, 3n),   0b1000n);
+    assert.equal(padAndValidatePath(0b0n, 3n), 0b1000n);
     assert.equal(padAndValidatePath(0b110n, 3n), 0b1110n);
 
     // Realistically large bit length.
     assert.equal(
-      padAndValidatePath(0x50c496ca24078e75b149f02109e8ddfc3867fecd6b520d3b5a803b62580bd36dn, 256n),
-                        0x150c496ca24078e75b149f02109e8ddfc3867fecd6b520d3b5a803b62580bd36dn);
+      padAndValidatePath(
+        0x50c496ca24078e75b149f02109e8ddfc3867fecd6b520d3b5a803b62580bd36dn,
+        256n,
+      ),
+      0x150c496ca24078e75b149f02109e8ddfc3867fecd6b520d3b5a803b62580bd36dn,
+    );
 
     // Negative paths are not allowed
     assert.throws(
-      () => { padAndValidatePath(-1n, 3n) }, 
-      Error, 
-      /Invalid path: -1/);
+      () => {
+        padAndValidatePath(-1n, 3n);
+      },
+      Error,
+      /Invalid path: -1/,
+    );
 
     // Paths longer than bit length are not allowed
     assert.throws(
-      () => { padAndValidatePath(0b100n, 1n) }, 
-      Error, 
-      /Path too long for given bit length: 0b100 is longer than 1 \+ 1 bits/);
+      () => {
+        padAndValidatePath(0b100n, 1n);
+      },
+      Error,
+      /Path too long for given bit length: 0b100 is longer than 1 \+ 1 bits/,
+    );
 
     // Padding can be turned off.
     assert.equal(padAndValidatePath(0b0n, false), 0b0n);
@@ -480,12 +647,15 @@ describe('Utility functions', function() {
 
     // Negative paths are still not allowed even with padding turned off
     assert.throws(
-      () => { padAndValidatePath(-1n, false) }, 
-      Error, 
-      /Invalid path: -1/);
+      () => {
+        padAndValidatePath(-1n, false);
+      },
+      Error,
+      /Invalid path: -1/,
+    );
   });
 
-  it('unpad', function() {
+  it("unpad", function () {
     // No padding
     assert.equal(unpad(0b0n, false), 0b0n);
     assert.equal(unpad(0b1n, false), 0b1n);
@@ -496,52 +666,99 @@ describe('Utility functions', function() {
     assert.equal(unpad(0b1010101n, 6n), 0b10101n);
   });
 
-  it('padTo32Bytes', function() {
+  it("padTo32Bytes", function () {
     // BigInt input
-    assert.equal(HexConverter.encode(padTo32Bytes(0x0n)),  
-        '0000000000000000000000000000000000000000000000000000000000000000');
-    assert.equal(HexConverter.encode(padTo32Bytes(0x1n)),  
-        '0000000000000000000000000000000000000000000000000000000000000001');
-    assert.equal(HexConverter.encode(padTo32Bytes(0x10n)), 
-        '0000000000000000000000000000000000000000000000000000000000000010');
-    assert.equal(HexConverter.encode(padTo32Bytes(0x123456789ABCDEFn)), 
-        '0000000000000000000000000000000000000000000000000123456789abcdef');
-    assert.equal(HexConverter.encode(padTo32Bytes(0xdf75dba2b13db9a7554e2f7d9a967feec9b2998cfe08e730a56cf3fc2088b87fn)), 
-        'df75dba2b13db9a7554e2f7d9a967feec9b2998cfe08e730a56cf3fc2088b87f');
+    assert.equal(
+      HexConverter.encode(padTo32Bytes(0x0n)),
+      "0000000000000000000000000000000000000000000000000000000000000000",
+    );
+    assert.equal(
+      HexConverter.encode(padTo32Bytes(0x1n)),
+      "0000000000000000000000000000000000000000000000000000000000000001",
+    );
+    assert.equal(
+      HexConverter.encode(padTo32Bytes(0x10n)),
+      "0000000000000000000000000000000000000000000000000000000000000010",
+    );
+    assert.equal(
+      HexConverter.encode(padTo32Bytes(0x123456789abcdefn)),
+      "0000000000000000000000000000000000000000000000000123456789abcdef",
+    );
+    assert.equal(
+      HexConverter.encode(
+        padTo32Bytes(
+          0xdf75dba2b13db9a7554e2f7d9a967feec9b2998cfe08e730a56cf3fc2088b87fn,
+        ),
+      ),
+      "df75dba2b13db9a7554e2f7d9a967feec9b2998cfe08e730a56cf3fc2088b87f",
+    );
 
     // Uint8Array input
-    assert.equal(HexConverter.encode(padTo32Bytes(HexConverter.decode('00'))), 
-        '0000000000000000000000000000000000000000000000000000000000000000');
-    assert.equal(HexConverter.encode(padTo32Bytes(HexConverter.decode('01'))), 
-        '0000000000000000000000000000000000000000000000000000000000000001');
-    assert.equal(HexConverter.encode(padTo32Bytes(HexConverter.decode('10'))), 
-        '0000000000000000000000000000000000000000000000000000000000000010');
-    assert.equal(HexConverter.encode(padTo32Bytes(HexConverter.decode('df75dba2b13db9a7554e2f7d9a967feec9b2998cfe08e730a56cf3fc2088b87f'))), 
-        'df75dba2b13db9a7554e2f7d9a967feec9b2998cfe08e730a56cf3fc2088b87f');
+    assert.equal(
+      HexConverter.encode(padTo32Bytes(HexConverter.decode("00"))),
+      "0000000000000000000000000000000000000000000000000000000000000000",
+    );
+    assert.equal(
+      HexConverter.encode(padTo32Bytes(HexConverter.decode("01"))),
+      "0000000000000000000000000000000000000000000000000000000000000001",
+    );
+    assert.equal(
+      HexConverter.encode(padTo32Bytes(HexConverter.decode("10"))),
+      "0000000000000000000000000000000000000000000000000000000000000010",
+    );
+    assert.equal(
+      HexConverter.encode(
+        padTo32Bytes(
+          HexConverter.decode(
+            "df75dba2b13db9a7554e2f7d9a967feec9b2998cfe08e730a56cf3fc2088b87f",
+          ),
+        ),
+      ),
+      "df75dba2b13db9a7554e2f7d9a967feec9b2998cfe08e730a56cf3fc2088b87f",
+    );
 
     // Too long -- bigint
     assert.throws(
-      () => { padTo32Bytes(0xfdf75dba2b13db9a7554e2f7d9a967feec9b2998cfe08e730a56cf3fc2088b87fn) },
+      () => {
+        padTo32Bytes(
+          0xfdf75dba2b13db9a7554e2f7d9a967feec9b2998cfe08e730a56cf3fc2088b87fn,
+        );
+      },
       Error,
-      /Input value too long/
+      /Input value too long/,
     );
     assert.throws(
-      () => { padTo32Bytes(0xffdf75dba2b13db9a7554e2f7d9a967feec9b2998cfe08e730a56cf3fc2088b87fn) },
+      () => {
+        padTo32Bytes(
+          0xffdf75dba2b13db9a7554e2f7d9a967feec9b2998cfe08e730a56cf3fc2088b87fn,
+        );
+      },
       Error,
-      /Input value too long/
+      /Input value too long/,
     );
 
     // Too long -- Uint8Array
     assert.throws(
-      () => { padTo32Bytes(HexConverter.decode('0fdf75dba2b13db9a7554e2f7d9a967feec9b2998cfe08e730a56cf3fc2088b87f')) },
+      () => {
+        padTo32Bytes(
+          HexConverter.decode(
+            "0fdf75dba2b13db9a7554e2f7d9a967feec9b2998cfe08e730a56cf3fc2088b87f",
+          ),
+        );
+      },
       Error,
-      /Input value too long/
+      /Input value too long/,
     );
     assert.throws(
-      () => { padTo32Bytes(HexConverter.decode('ffdf75dba2b13db9a7554e2f7d9a967feec9b2998cfe08e730a56cf3fc2088b87f')) },
+      () => {
+        padTo32Bytes(
+          HexConverter.decode(
+            "ffdf75dba2b13db9a7554e2f7d9a967feec9b2998cfe08e730a56cf3fc2088b87f",
+          ),
+        );
+      },
       Error,
-      /Input value too long/
+      /Input value too long/,
     );
   });
 });
-
