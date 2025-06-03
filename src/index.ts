@@ -6,6 +6,7 @@ import {
   padAndValidatePath,
   unpad,
   splitPrefix,
+  HashOptions,
 } from "./smt.js";
 import { SumPath, SumTree } from "./sumtree.js";
 import {
@@ -41,6 +42,7 @@ export {
   splitPrefix,
   padAndValidatePath,
   unpad,
+  HashOptions,
   Leaf,
   SumLeaf,
   PathItem,
