@@ -18,6 +18,7 @@ hardhat.config.js
 # IDE files
 .vscode/
 .idea/
+.github/
 
 # Misc
 node_modules/
