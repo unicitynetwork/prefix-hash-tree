@@ -880,7 +880,7 @@ export class Path extends AbstractPath<
           await hasher
             .update(padTo32Bytes(LEAF_PREFIX))
             .update(
-              typeof leaf.value == "string"
+          typeof leaf.value == "string"
                 ? stringToBytes(leaf.value)
                 : padTo32Bytes(leaf.value),
             )
