@@ -33,23 +33,24 @@ export interface PrefixSplit extends PathItem {
 }
 
 export interface PathItemRoot extends AbstractPathItemRoot {
-  type: 'root';
+  type: "root";
 }
 
 export interface PathItemInternalNode extends AbstractPathItemInternalNode {
-  type: 'internalNode';
+  type: "internalNode";
 }
 
-export interface PathItemInternalNodeHashed extends AbstractPathItemInternalNodeHashed  {
-  type: 'internalNodeHashed';
+export interface PathItemInternalNodeHashed
+  extends AbstractPathItemInternalNodeHashed {
+  type: "internalNodeHashed";
 }
 
 export interface PathItemEmptyBranch extends AbstractPathItemEmptyBranch {
-  type: 'emptyBranch';
+  type: "emptyBranch";
 }
 
 export interface PathItemLeaf extends AbstractPathItemLeaf {
-  type: 'leaf';
+  type: "leaf";
 }
 
 export interface IPathItemJsonBase {
@@ -57,31 +58,31 @@ export interface IPathItemJsonBase {
 }
 
 export interface IPathItemRootJson extends IPathItemJsonBase {
-  readonly type: 'root';
+  readonly type: "root";
   readonly rootHash: string;
 }
 
 export interface IPathItemInternalNodeJson extends IPathItemJsonBase {
-  readonly type: 'internalNode';
+  readonly type: "internalNode";
   readonly prefix: string;
   readonly siblingHash?: string;
 }
 
 export interface IPathItemInternalNodeHashedJson extends IPathItemJsonBase {
-  readonly type: 'internalNodeHashed';
+  readonly type: "internalNodeHashed";
   readonly nodeHash: string;
 }
 
 export interface IPathItemEmptyBranchJson extends IPathItemJsonBase {
-  readonly type: 'emptyBranch';
+  readonly type: "emptyBranch";
   readonly direction: string;
   readonly siblingHash: string;
 }
 
 export interface IPathItemLeafJson extends IPathItemJsonBase {
-  readonly type: 'leaf';
+  readonly type: "leaf";
   readonly value: string;
-  readonly valueType: 'string' | 'Uint8Array';
+  readonly valueType: "string" | "Uint8Array";
 }
 
 export type AnyPathItemJson =
