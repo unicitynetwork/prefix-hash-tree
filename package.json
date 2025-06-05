@@ -39,7 +39,6 @@
     "typescript-eslint": "8.24.0"
   },
   "dependencies": {
-    "@unicitylabs/utils": "^1.2.9",
     "@unicitylabs/commons": "2.4.0-rc.33e410b"
   },
   "publishConfig": {
