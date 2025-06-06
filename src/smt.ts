@@ -4,6 +4,7 @@ import { HashAlgorithm } from "@unicitylabs/commons/lib/hash/HashAlgorithm.js";
 import { IDataHasher } from "@unicitylabs/commons/lib/hash/IDataHasher.js";
 import { BigintConverter } from "@unicitylabs/commons/lib/util/BigintConverter.js";
 import { HexConverter } from "@unicitylabs/commons/lib/util/HexConverter.js";
+import { stringToBytes } from "./utils.js";
 
 import {
   Leaf,
@@ -460,7 +461,7 @@ export abstract class AbstractLeafNode<
         .update(padTo32Bytes(LEAF_PREFIX))
         .update(
           typeof this.value == "string"
-            ? Buffer.from(this.value)
+            ? stringToBytes(this.value)
             : padTo32Bytes(this.value),
         )
         .digest()
@@ -880,7 +881,7 @@ export class Path extends AbstractPath<
             .update(padTo32Bytes(LEAF_PREFIX))
             .update(
               typeof leaf.value == "string"
-                ? Buffer.from(leaf.value)
+                ? stringToBytes(leaf.value)
                 : padTo32Bytes(leaf.value),
             )
             .digest()
